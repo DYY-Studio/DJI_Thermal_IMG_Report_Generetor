@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page { size: A4; margin: 20mm; }
+        body { font-family: sans-serif; color: #333; line-height: 1.4; }
+        .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+        
+        .image-container { 
+            display: flex; 
+            flex-direction: row; /* 显式声明横向排列 */
+            align-items: stretch; 
+            height: 400px; 
+            width: 100%;       /* 强制占据 100% 可用宽度 */
+            max-width: 100%;   /* 防止超出父元素（body） */
+            margin-bottom: 30px; 
+            box-sizing: border-box; 
+            overflow: hidden;  /* 最后的保险：裁剪溢出部分 */
+        }
+
+        /* 主图像样式 */
+        .main-image { 
+            flex: 1; 
+            min-width: 0;      /* 关键：允许 flex 项目缩小到比内容更小的尺寸 */
+            width: auto;       /* 让图像自适应缩放 */
+            height: 100%;      /* 高度填满容器的 400px */
+            object-fit: contain; 
+            background: transparent;
+            display: block;
+        }
+
+        /* 光谱棒包装器 */
+        .colorbar-wrapper { 
+            width: 60px; 
+            flex-shrink: 0;    /* 关键：防止光谱棒被图像挤压变形 */
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            margin-left: 15px; 
+        }
+        .temp-label { font-size: 12px; font-weight: bold; height: 20px; }
+        .colorbar { flex: 1; width: 25px; background: linear-gradient(to top, {{ palette_colors }}); border: 1px solid #000; }
+
+        /* 信息表格 */
+        .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .info-box { border: 1px solid #ccc; padding: 10px; border-radius: 5px; }
+        .info-box h3 { margin-top: 0; font-size: 14px; color: #666; text-transform: uppercase; }
+        table { width: 100%; font-size: 12px; }
+        td { padding: 3px 0; }
+        .label { font-weight: bold; width: 120px; }
+    </style>
+</head>
+<body>
+    <div class="header" style="line-height: 0.5;">
+        <p style="font-weight: bold; font-size: larger;">{{ filename }}</p>
+        <p style="font-size: smaller;">{{ create_time }}</p>
+    </div>
+
+    <div class="image-container">
+        <img src="{{ image_path }}" class="main-image">
+        <div class="colorbar-wrapper">
+            <div class="temp-label">{{ max_temp }}°C</div>
+            <div class="colorbar"></div>
+            <div class="temp-label">{{ min_temp }}°C</div>
+        </div>
+    </div>
+
+    <div class="info-section">
+        <div class="info-box">
+            <h3>计算参数</h3>
+            <table>
+                <tr><td class="label">距离:</td><td>{{ distance }} m</td></tr>
+                <tr><td class="label">空气湿度:</td><td>{{ humidity }} %</td></tr>
+                <tr><td class="label">发射率:</td><td>{{ emissivity }}</td></tr>
+                <tr><td class="label">环境温度:</td><td>{{ ambient }} °C</td></tr>
+                <tr><td class="label">反射温度:</td><td>{{ reflection }} °C</td></tr>
+            </table>
+        </div>
+        <div class="info-box">
+            <h3>图像信息</h3>
+            <table>
+                <tr><td class="label">设备型号:</td><td>{{ model }}</td></tr>
+                <tr><td class="label">序列号:</td><td>{{ sn }}</td></tr>
+                <tr><td class="label">分辨率:</td><td>{{ width }} x {{ height }}</td></tr>
+                <tr><td class="label">拍摄时间:</td><td>{{ create_time }}</td></tr>
+                <tr><td class="label">经纬度:</td><td>{{ gps }}</td></tr>
+                <tr><td class="label">焦距:</td><td>{{ focal_length }} mm</td></tr>
+                <tr><td class="label">光圈:</td><td>f/{{ aperture }}</td></tr>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
