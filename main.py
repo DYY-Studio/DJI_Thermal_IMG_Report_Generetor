@@ -1,8 +1,9 @@
-import os, subprocess, exifread, pathlib, json, traceback, fitz # PyMuPDF
+import os, datetime, exifread, uuid, asyncio, pathlib, json, traceback, fitz # PyMuPDF
 from PIL import Image
 from weasyprint import HTML
 from jinja2 import Template
 from enum import Enum
+from concurrent.futures import ProcessPoolExecutor
 
 # 配置路径
 CLI_PATH = r"D:\Test\dji_thermal_sdk_v1.8_20250829\utility\bin\windows\release_x64\dji_irp.exe"  # 编译好的 dji_irp 路径
@@ -50,7 +51,8 @@ class ThermalReportGenerator:
             ambient: float = 25.0,
             reflection: float = 25.0,
             brightness: int = 50,
-            palette: ThermalPalette = ThermalPalette.iron_red
+            palette: ThermalPalette = ThermalPalette.iron_red,
+            max_workers: int = 4
         ):
         pathlib.Path(OUTPUT_DIR).mkdir(exist_ok=True)
         pathlib.Path(TEMP_DIR).mkdir(exist_ok=True)
@@ -65,6 +67,9 @@ class ThermalReportGenerator:
         self.brightness = brightness
         self.palette = palette
 
+        self.semaphore = asyncio.Semaphore(max_workers)
+        self.executor = ProcessPoolExecutor(max_workers=max_workers)
+
     def get_metadata(self, img_path):
         """从 APP1 Marker 提取元数据"""
         with open(img_path, 'rb') as f:
@@ -77,22 +82,18 @@ class ThermalReportGenerator:
             "model": get_tag('Image Model'),
             "sn": get_tag('EXIF BodySerialNumber'),
             "focal_length": get_tag('EXIF FocalLength'),
-            "aperture": f"{float(get_tag('EXIF FNumber')):.1f}",
+            "aperture": f"{float(get_tag('EXIF FNumber')):.1f}" if get_tag('EXIF FNumber') != "N/A" else "N/A",
             "create_time": get_tag('EXIF DateTimeOriginal'),
             "gps": f"{convert_to_decimal(get_tag('GPS GPSLatitude')):.6f}, {convert_to_decimal(get_tag('GPS GPSLongitude')):.6f}"
         }
 
-    def process_thermal(self, img_path: str,):
+    async def process_thermal_async(self, img_path: str, task_id: str):
         """调用 DJI SDK CLI 处理图像"""
-        base_name = os.path.basename(img_path)
-        raw_out = os.path.join(TEMP_DIR, f"{base_name}.raw")
+        raw_out = os.path.join(TEMP_DIR, f"{task_id}.raw")
         
         # 生成伪彩色图像数据 (RGB 格式)
         cmd = [
-            CLI_PATH, 
-            "-a", "process", 
-            "-s", img_path, 
-            "-o", raw_out, 
+            "-a", "process", "-s", img_path, "-o", raw_out, 
             "-p", self.palette.name,
             "--distance", str(self.distance),
             "--humidity", str(self.humidity),
@@ -101,12 +102,18 @@ class ThermalReportGenerator:
             "--reflection", str(self.reflection),
             "--brightness", str(self.brightness)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        proc = await asyncio.create_subprocess_exec(
+            CLI_PATH, *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        result = stdout.decode()
         
         # 解析 CLI 输出获取自适应温度范围
         # 示例输出: Color bar adaptive range is [25.5, 36.8]
-        min_temp, max_temp = "N/A", "N/A"
-        for line in result.stdout.split('\n'):
+        min_temp, max_temp, w, h = "N/A", "N/A", 0, 0
+        for line in result.split('\n'):
             if "adaptive range" in line:
                 temps = line.split('[')[1].split(']')[0].split(',')
                 min_temp, max_temp = f"{float(temps[0].strip()):.2f}", f"{float(temps[1].strip()):.2f}"
@@ -117,33 +124,45 @@ class ThermalReportGenerator:
 
         # 将 Raw RGB 转换为 PNG
         with open(raw_out, "rb") as f:
-            raw_data = f.read()
-        img = Image.frombytes("RGB", (w, h), raw_data)
-        final_img_path = os.path.join(TEMP_DIR, f"{base_name}.png")
+            img = Image.frombytes("RGB", (w, h), f.read())
+        
+        final_img_path = os.path.join(TEMP_DIR, f"{task_id}.png")
         img.save(final_img_path)
+
+        if os.path.exists(raw_out): os.remove(raw_out)
         
         return final_img_path, min_temp, max_temp, w, h
 
-    def generate_batch(self):
-        pdf_files = []
-        images = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(('.jpg', '.jpeg'))]
-        
-        for idx, img_name in enumerate(images):
-            print(f"处理中 ({idx+1}/{len(images)}): {img_name}")
+    async def render_pdf_worker(self, html_str: str, pdf_path: str):
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            self.executor, 
+            self._sync_render_pdf, html_str, pdf_path
+        )
+
+    @staticmethod
+    def _sync_render_pdf(html_str: str, pdf_path: str):
+        HTML(string=html_str).write_pdf(pdf_path)
+
+    async def process_single_file(self, img_name: str):
+        """单个文件的完整处理流水线"""
+        async with self.semaphore:
+            task_id = uuid.uuid4().hex
             full_path = os.path.join(INPUT_DIR, img_name)
+            pdf_path = os.path.join(TEMP_DIR, f"{task_id}.pdf")
             
             try:
-                # 处理热图
-                processed_img, t_min, t_max, w, h = self.process_thermal(full_path)
-                # 提取元数据
+                # SDK 处理
+                png_path, t_min, t_max, w, h = await self.process_thermal_async(full_path, task_id)
+                
+                # 元数据提取 (同步)
                 meta = self.get_metadata(full_path)
                 
                 # 渲染 HTML
                 html_out = self.template.render(
                     filename=img_name,
-                    image_path=pathlib.Path(processed_img).absolute().as_uri(),
-                    min_temp=t_min,
-                    max_temp=t_max,
+                    image_path=pathlib.Path(png_path).absolute().as_uri(),
+                    min_temp=t_min, max_temp=t_max,
                     palette_colors=get_palette(self.palette),
                     width=w, height=h,
                     distance=f"{self.distance}", 
@@ -154,25 +173,58 @@ class ThermalReportGenerator:
                     **meta
                 )
                 
-                # 导出单页 PDF
-                pdf_path = os.path.join(TEMP_DIR, f"{img_name}.pdf")
-                HTML(string=html_out).write_pdf(pdf_path)
-                pdf_files.append(pdf_path)
-                
-            except Exception as e:
-                print(f"文件 {img_name} 处理失败")
+                # 进程池渲染 PDF
+                await self.render_pdf_worker(html_out, pdf_path)
+                return pdf_path, png_path, img_name
+            except Exception:
                 traceback.print_exc()
+                return None, None, img_name
+            
+    async def run(self):
+        images = [f for f in os.listdir(INPUT_DIR) if f.lower().endswith(('.jpg', '.jpeg'))]
+        if not images:
+            print("未发现待处理图片")
+            return
 
-        # 最终拼合 PDF 避免内存问题
-        if pdf_files:
+        print(f"开始处理 {len(images)} 张图片...")
+        # 利用 Python 3.6 后 dict 的有序性，保证拼合PDF时保持输入顺序
+        results = {img: None for img in images}
+        tasks = [asyncio.create_task(self.process_single_file(img)) for img in images]
+        
+        # 并行执行所有任务
+        for task in asyncio.as_completed(tasks):
+            result = await task
+            if result[0] is not None and result[1] is not None:
+                results[result[2]] = (result[0], result[1])
+                print(f"完成: {result[2]}")
+            else:
+                print(f"失败: {result[2]}")
+        
+        # 筛选有效的 PDF 路径
+        pdf_paths = [r[0] for r in results.values()]
+        all_temp_imgs = [r[1] for r in results.values()]
+
+        if pdf_paths:
+            # 合并 PDF (Fitz 合并极快，同步即可)
             merged_pdf = fitz.open()
-            for pdf in pdf_files:
-                with fitz.open(pdf) as f:
+            for p in pdf_paths:
+                with fitz.open(p) as f:
                     merged_pdf.insert_pdf(f)
-            merged_pdf.save(os.path.join(OUTPUT_DIR, "Final_Batch_Report.pdf"))
+            
+            output_file = os.path.join(OUTPUT_DIR, f"DJI_Thermal_Report_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pdf")
+            merged_pdf.save(output_file)
             merged_pdf.close()
-            print(f"成功导出合并报告至 {OUTPUT_DIR}")
+            print(f"\n报告已生成: {output_file}")
+
+            # 清理所有临时文件
+            for f in pdf_paths + all_temp_imgs:
+                if os.path.exists(f): os.remove(f)
+        
+        self.executor.shutdown()
 
 if __name__ == "__main__":
-    gen = ThermalReportGenerator(palette=ThermalPalette.rainbow1)
-    gen.generate_batch()
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
+    gen = ThermalReportGenerator(palette=ThermalPalette.iron_red)
+    asyncio.run(gen.run())
