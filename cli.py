@@ -145,7 +145,7 @@ def main(
             output_dir=output_dir,
             temp_dir=temp_dir,
             cli_path=cli_path,
-            wreay_path=None if weasy_lib else shutil.which('weasyprint'),
+            weasy_path=None if weasy_lib else shutil.which('weasyprint'),
             distance=distance,
             humidity=humidity,
             emissivity=emissivity,

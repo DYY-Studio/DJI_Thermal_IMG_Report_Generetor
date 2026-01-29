@@ -169,7 +169,7 @@ class ThermalReportGenerator:
             )
         else:
             proc = await asyncio.create_subprocess_exec(
-                str(self.wreay_path), "-", str(pdf_path),
+                str(self.weasy_path), "-", str(pdf_path),
                 stdin=asyncio.subprocess.PIPE
             )
             await proc.communicate(html_str.encode('utf-8'))
@@ -180,7 +180,7 @@ class ThermalReportGenerator:
             from weasyprint import HTML
             HTML(string=html_str).write_pdf(pdf_path)
         except ImportError:
-            print("错误: 未找到 weasyprint 库，请尝试提供 weasy_path")
+            print("错误: 未找到 weasyprint 库")
             raise
 
     async def process_single_file(self, img_name: str):
