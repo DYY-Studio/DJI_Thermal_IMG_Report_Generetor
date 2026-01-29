@@ -1,4 +1,5 @@
 /.venv
 /input_images
 /reports
-/temp
+/temps
+/__pycache__

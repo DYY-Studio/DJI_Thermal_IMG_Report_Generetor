@@ -40,7 +40,7 @@
             margin-left: 15px; 
         }
         .temp-label { font-size: 12px; font-weight: bold; height: 20px; }
-        .colorbar { flex: 1; width: 25px; background: linear-gradient(to top, {{ palette_colors }}); border: 1px solid #000; }
+        .colorbar { flex: 1; width: {{ colorbar_width }}px; background: linear-gradient(to top, {{ palette_colors }}); {{ colorbar_border }} }
 
         /* 信息表格 */
         .info-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
