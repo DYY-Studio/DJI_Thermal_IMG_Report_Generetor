@@ -43,8 +43,12 @@ python cli.py --help # 查看帮助信息
 ```
 
 ## 依赖
-* `pyexiv2`
-  * 读取图像`EXIF`和`XMP`数据
+* `exifread`
+  * 读取图像`EXIF`数据
+* `pillow`, `xmltodict`
+  * 读取图像`XMP`数据
+* `pillow`
+  * 图像处理
 * `typer`, `rich`
   * 驱动美观的可视化CLI
 * `weasyprint`, `jinja2`
