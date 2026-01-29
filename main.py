@@ -1,6 +1,5 @@
 import os, datetime, pyexiv2, uuid, asyncio, pathlib, json, traceback, locale, fitz # PyMuPDF
 from PIL import Image
-from weasyprint import HTML
 from jinja2 import Template
 from enum import Enum
 from concurrent.futures import ProcessPoolExecutor
@@ -46,6 +45,7 @@ class ThermalReportGenerator:
             output_dir: str | pathlib.Path,
             temp_dir: str | pathlib.Path,
             cli_path: str | pathlib.Path,
+            weasy_path: Optional[str | pathlib.Path] = None,
             distance: float = 5.0,
             humidity: float = 50.0,
             emissivity: float = 0.95,
@@ -76,6 +76,7 @@ class ThermalReportGenerator:
         self.output_dir = output_dir
         self.cli_path = cli_path
         self.temp_dir = temp_dir
+        self.weasy_path = weasy_path
 
         self.semaphore = asyncio.Semaphore(max_workers)
         self.executor = ProcessPoolExecutor(max_workers=max_workers)
@@ -160,15 +161,27 @@ class ThermalReportGenerator:
         return final_img_path, min_temp, max_temp, w, h
 
     async def render_pdf_worker(self, html_str: str, pdf_path: str):
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            self.executor, 
-            self._sync_render_pdf, html_str, pdf_path
-        )
+        if not self.weasy_path:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                self.executor, 
+                self._sync_render_pdf, html_str, pdf_path
+            )
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                str(self.wreay_path), "-", str(pdf_path),
+                stdin=asyncio.subprocess.PIPE
+            )
+            await proc.communicate(html_str.encode('utf-8'))
 
     @staticmethod
     def _sync_render_pdf(html_str: str, pdf_path: str):
-        HTML(string=html_str).write_pdf(pdf_path)
+        try:
+            from weasyprint import HTML
+            HTML(string=html_str).write_pdf(pdf_path)
+        except ImportError:
+            print("错误: 未找到 weasyprint 库，请尝试提供 weasy_path")
+            raise
 
     async def process_single_file(self, img_name: str):
         """单个文件的完整处理流水线"""

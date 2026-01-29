@@ -49,6 +49,9 @@ def fast(
     cbborder: Annotated[
         bool, typer.Option(help='Whether to show border of Temperature-Color Bar')
     ] = False,
+    weasy_lib: Annotated[
+        bool, typer.Option(help='Use WeasyPrint executable instead of Library in Windows')
+    ] = False if os.name == 'nt' else True,
     max_workers: Annotated[
         int, typer.Option("--workers", "-ws", min=1, max=32, help='Max workers of concurrent process')
     ] = 4
@@ -68,6 +71,7 @@ def fast(
         palette=palette,
         colorbar_width=colorbar_width,
         cbborder=cbborder,
+        weasy_lib=weasy_lib,
         max_workers=max_workers
     )
 
@@ -118,6 +122,9 @@ def main(
     cbborder: Annotated[
         bool, typer.Option(help='Whether to show border of Temperature-Color Bar')
     ] = False,
+    weasy_lib: Annotated[
+        bool, typer.Option(help='Use WeasyPrint executable instead of Library in Windows')
+    ] = False if os.name == 'nt' else True,
     max_workers: Annotated[
         int, typer.Option("--workers", "-ws", min=1, max=32, help='Max workers of concurrent process')
     ] = 4
@@ -126,6 +133,9 @@ def main(
         raise FileNotFoundError("Cannot find dji_irp executable")
     if not input_dir and not input_files:
         raise ValueError("No any input")
+    if not weasy_lib and not shutil.which('weasyprint'):
+        raise FileNotFoundError("Invaild WreayPrint executable path")
+    
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -135,6 +145,7 @@ def main(
             output_dir=output_dir,
             temp_dir=temp_dir,
             cli_path=cli_path,
+            wreay_path=None if weasy_lib else shutil.which('weasyprint'),
             distance=distance,
             humidity=humidity,
             emissivity=emissivity,

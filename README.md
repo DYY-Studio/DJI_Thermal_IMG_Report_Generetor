@@ -4,7 +4,7 @@
 基于 DJI Thermal SDK 的示范程序 `dji_irp` 实现伪彩色转换和温度范围提取
 
 ## 实现功能
-* 基于Python的跨操作系统支持
+* 基于Python的Windows/Linux系统支持（由于DJI没有macOS的SDK，不受支持）
 * 输入多文件，输出批量报告
 * 基于`asyncio`和`concurrent`的异步&进程池并行加速
 * 可从 DJI Thermal SDK 提供的10个LUT/调色盘中选择
@@ -28,9 +28,14 @@ source .venv/bin/activate # macOS / Linux
 # 安装依赖
 pip install -r requirements.txt
 ```
-3. 配置`weasyprint`，请阅读[这里](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation)
-    * Windows 用户请直接从下面语句后开始阅读：
-        > If you want to use WeasyPrint as a Python library 
+3. 配置`weasyprint`
+   * Windows方法一（推荐）
+     * 直接到[这里](https://github.com/Kozea/WeasyPrint/releases)下载预编译好的WeasyPrint可执行文件，放置在工作目录或`$PATH`环境变量的目录下
+   * Windows方法二（难度较大，可能出现各种问题）
+     * 根据[这里](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html)的指导，将其作为Python库安装。
+     * 运行时需要加上参数`--weasy-lib`（该参数在Windows下默认为False）
+   * Linux
+     * 根据[这里](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html)的指导，完成安装
 4. 运行CLI
 ```bash
 python cli.py --help # 查看帮助信息
