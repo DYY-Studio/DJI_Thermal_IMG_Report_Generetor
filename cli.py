@@ -150,13 +150,16 @@ def main(
             TextColumn("[progress.description]{task.description}"), BarColumn(), MofNCompleteColumn(), TimeRemainingColumn(),
             transient=True
         ) as progress:
-            dummy_task = progress.add_task('Please wait', total=None)
+            dummy_task = progress.add_task('Please wait...', total=None)
             task = None
             async for i, r in gen.run(input_files if input_files else None):
                 if not task:
                     progress.remove_task(dummy_task)
-                    task = progress.add_task('Processing', total=i)
+                    task = progress.add_task('Processing...', total=i)
                 progress.advance(task, 1)
+                if progress.finished:
+                    progress.remove_task(task)
+                    progress.add_task("PDF Merging...", total=None)
     
     asyncio.run(__internal_async())
 
