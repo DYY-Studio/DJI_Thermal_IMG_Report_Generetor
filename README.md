@@ -16,19 +16,20 @@
 ## 使用方法
 1. `clone`本仓库，或打包下载仓库
 2. 安装依赖
-```bash
-# 可选：创建虚拟环境并激活
-python -m venv .venv 
+   ```bash
+   # 可选：创建虚拟环境并激活
+   python -m venv .venv 
 
-call ".\.venv\Scripts\activate.bat" # Windows: CMD
-.\.venv\Scripts\Activate.ps1 # Windows: Powershell
-source .venv/bin/activate # macOS / Linux 
-```
-```bash
-# 安装依赖
-pip install -r requirements.txt
-```
-3. 配置`weasyprint`
+   call ".\.venv\Scripts\activate.bat" # Windows: CMD
+   .\.venv\Scripts\Activate.ps1 # Windows: Powershell
+   source .venv/bin/activate # macOS / Linux 
+   ```
+   ```bash
+   # 安装依赖
+   pip install -r requirements.txt
+   ```
+3. 下载 [DJI Thermal SDK](https://www.dji.com/cn/downloads/softwares/dji-thermal-sdk)，解压其中的`utility/bin`文件夹得到`dji_irp`
+4. 配置`weasyprint`
    * Windows方法一（推荐）
      * 直接到[这里](https://github.com/Kozea/WeasyPrint/releases)下载预编译好的WeasyPrint可执行文件，放置在工作目录或`$PATH`环境变量的目录下
    * Windows方法二（难度较大，可能出现各种问题）
@@ -36,7 +37,7 @@ pip install -r requirements.txt
      * 运行时需要加上参数`--weasy-lib`（该参数在Windows下默认为False）
    * Linux
      * 根据[这里](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html)的指导，完成安装
-4. 运行CLI
+5. 运行CLI
 ```bash
 python cli.py --help # 查看帮助信息
 ```
