@@ -1,4 +1,4 @@
-import os, datetime, pyexiv2, uuid, asyncio, pathlib, json, traceback, fitz # PyMuPDF
+import os, datetime, pyexiv2, uuid, asyncio, pathlib, json, traceback, locale, fitz # PyMuPDF
 from PIL import Image
 from weasyprint import HTML
 from jinja2 import Template
@@ -82,7 +82,7 @@ class ThermalReportGenerator:
 
     def get_metadata(self, img_path: str | pathlib.Path):
         """从 APP1 Marker 提取元数据"""
-        with pyexiv2.Image(str(img_path)) as img:
+        with pyexiv2.Image(str(img_path), encoding=locale.getencoding()) as img:
             tags = img.read_xmp()
             tags.update(img.read_exif())
 
@@ -134,7 +134,7 @@ class ThermalReportGenerator:
             stderr=asyncio.subprocess.PIPE
         )
         stdout, _ = await proc.communicate()
-        result = stdout.decode()
+        result = stdout.decode(locale.getencoding())
         
         # 解析 CLI 输出获取自适应温度范围
         # 示例输出: Color bar adaptive range is [25.5, 36.8]
