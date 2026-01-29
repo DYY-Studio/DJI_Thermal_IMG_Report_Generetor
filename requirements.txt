@@ -1,5 +1,6 @@
 typer
-pyexiv2
+exifread
 jinja2
 pymupdf
-pillow
+pillow >= 11.0.0
+xmltodict

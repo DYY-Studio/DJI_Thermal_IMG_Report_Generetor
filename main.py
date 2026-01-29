@@ -1,4 +1,4 @@
-import os, datetime, pyexiv2, uuid, asyncio, pathlib, json, traceback, locale, fitz # PyMuPDF
+import os, datetime, exifread, uuid, asyncio, pathlib, json, traceback, locale, xmltodict, fitz # PyMuPDF
 from PIL import Image
 from jinja2 import Template
 from enum import Enum
@@ -83,11 +83,16 @@ class ThermalReportGenerator:
 
     def get_metadata(self, img_path: str | pathlib.Path):
         """从 APP1 Marker 提取元数据"""
-        with pyexiv2.Image(str(img_path), encoding=locale.getencoding()) as img:
-            tags = img.read_xmp()
-            tags.update(img.read_exif())
+        with open(img_path, mode='rb') as f:
+            tags = exifread.process_file(f, builtin_types = True, auto_seek = True)
+            with Image.open(f) as img:
+                xmp = img.info.get('xmp', '')
+                if xmp:
+                    tags.update(xmltodict.parse(xmp)['x:xmpmeta']['rdf:RDF']['rdf:Description'])
+                else:
+                    return None
 
-        if not tags.get("Xmp.drone-dji.ImageSource", "") == "InfraredCamera":
+        if not tags.get("@drone-dji:ImageSource", "") == "InfraredCamera":
             return None
             
         def get_tag(key: str):
@@ -106,12 +111,12 @@ class ThermalReportGenerator:
             return result
 
         return {
-            "model": get_tag('Xmp.tiff.Model'),
-            "sn": get_tag('Xmp.drone-dji.DroneSerialNumber'),
-            "focal_length": get_tag('Exif.Photo.FocalLength'),
-            "aperture": f"{float(get_tag('Exif.Photo.FNumber')):.1f}" if get_tag('Exif.Photo.FNumber') != "N/A" else "N/A",
-            "create_time": datetime.datetime.fromisoformat(get_tag('Xmp.xmp.CreateDate')).strftime("%Y/%m/%d %H:%M:%S"),
-            "gps": f"{convert_to_decimal(get_tag('Exif.GPSInfo.GPSLatitude')):.6f}, {convert_to_decimal(get_tag('Exif.GPSInfo.GPSLongitude')):.6f}"
+            "model": get_tag('@tiff:Model'),
+            "sn": get_tag('@drone-dji:DroneSerialNumber'),
+            "focal_length": get_tag('EXIF FocalLength'),
+            "aperture": f"{float(get_tag('EXIF FNumber')):.1f}" if get_tag('EXIF FNumber') != "N/A" else "N/A",
+            "create_time": datetime.datetime.fromisoformat(get_tag('@xmp:CreateDate')).strftime("%Y/%m/%d %H:%M:%S"),
+            "gps": f"{convert_to_decimal(get_tag('EXIF GPSLatitude')):.6f}, {convert_to_decimal(get_tag('EXIF GPSLongitude')):.6f}"
         }
 
     async def process_thermal_async(self, img_path: str | pathlib.Path, task_id: str):
