@@ -33,6 +33,10 @@ pip install -r requirements.txt
         > If you want to use WeasyPrint as a Python library 
 4. 运行CLI
 ```bash
+# 注意！对于Windows用户，应当使用Python UTF-8模式，即
+python -X utf8 cli.py --help # 查看帮助信息
+
+# 对于其他系统用户，因为默认就是UTF-8，不需要额外开关
 python cli.py --help # 查看帮助信息
 ```
 

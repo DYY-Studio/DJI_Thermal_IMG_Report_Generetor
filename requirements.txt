@@ -1,0 +1,6 @@
+typer
+pyexiv2
+weasyprint
+jinja2
+pymupdf
+pillow
