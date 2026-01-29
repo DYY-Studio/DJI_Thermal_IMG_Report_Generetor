@@ -6,7 +6,7 @@
 ## 实现功能
 * 基于Python的跨操作系统支持
 * 输入多文件，输出批量报告
-* 基于`aysncio`和`concurrent`的异步&进程池并行加速
+* 基于`asyncio`和`concurrent`的异步&进程池并行加速
 * 可从 DJI Thermal SDK 提供的10个LUT/调色盘中选择
   * `white_hot` | `fulgurite` | `iron_red` | `hot_iron`  | `medical`   | `arctic` | `rainbow1`  | `rainbow2`  | `tint` | `black_hot`
 * 支持手动设置计算参数
