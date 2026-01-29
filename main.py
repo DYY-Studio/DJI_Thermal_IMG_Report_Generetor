@@ -194,13 +194,13 @@ class ThermalReportGenerator:
             pdf_path = pathlib.Path(self.temp_dir) / f"{task_id}.pdf"
             
             try:
-                # SDK 处理
-                png_path, t_min, t_max, w, h = await self.process_thermal_async(full_path, task_id)
-                
                 # 元数据提取 (同步)
                 meta = self.get_metadata(full_path)
                 if meta is None:
                     return None, None, img_name, "No InfraredCamera Image / Cannot find DJI XMP"
+                
+                # SDK 处理
+                png_path, t_min, t_max, w, h = await self.process_thermal_async(full_path, task_id)
                 
                 # 渲染 HTML
                 html_out = self.template.render(
@@ -257,8 +257,8 @@ class ThermalReportGenerator:
                 yield len(images), False
         
         # 筛选有效的 PDF 路径
-        pdf_paths = [r[0] for r in results.values()]
-        all_temp_imgs = [r[1] for r in results.values()]
+        pdf_paths = [r[0] for r in results.values() if r]
+        all_temp_imgs = [r[1] for r in results.values() if r]
 
         if pdf_paths:
             # 合并 PDF (Fitz 合并极快，同步即可)
