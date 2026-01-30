@@ -1,4 +1,4 @@
-import os, datetime, exifread, uuid, asyncio, pathlib, json, traceback, locale, xmltodict, fitz # PyMuPDF
+import os, datetime, exifread, shutil, uuid, asyncio, pathlib, json, traceback, locale, xmltodict, fitz # PyMuPDF
 from PIL import Image
 from jinja2 import Template
 from enum import Enum
@@ -188,7 +188,7 @@ class ThermalReportGenerator:
             print("错误: 未找到 weasyprint 库")
             raise
 
-    async def process_single_file(self, img_name: str):
+    async def process_single_file(self, img_name: str, only_palette: bool = False):
         """单个文件的完整处理流水线"""
         async with self.semaphore:
             task_id = uuid.uuid4().hex
@@ -206,6 +206,9 @@ class ThermalReportGenerator:
                 
                 # SDK 处理
                 png_path, t_min, t_max, w, h = await self.process_thermal_async(full_path, task_id)
+
+                if only_palette:
+                    return None, png_path, img_name, None
                 
                 # 渲染 HTML
                 html_out = self.template.render(
@@ -230,6 +233,48 @@ class ThermalReportGenerator:
             except Exception as e:
                 traceback.print_exc()
                 return None, None, img_name, e
+            
+    async def run_palette_change(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, bool], None]:
+        if not image_abs_paths:
+            images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
+        else:
+            images = []
+            for f in image_abs_paths:
+                if not pathlib.Path(f).is_absolute():
+                    raise ValueError("Path in file list must be absolute!")
+                if str(f).lower().endswith(('.jpg', '.jpeg')):
+                    images.append(str(f))
+        if not images:
+            print("未发现待处理图片")
+            return
+        
+        self.output_dir = pathlib.Path(self.output_dir) / self.palette.name
+        self.output_dir.mkdir(exist_ok=True)
+        
+        tasks = [asyncio.create_task(self.process_single_file(img, only_palette=True)) for img in images]
+        for task in asyncio.as_completed(tasks):
+            result = await task
+            if result[0] is None and result[1] is not None:
+                output_path = pathlib.Path(self.output_dir) / result[2]
+                filename_out_ext = result[2].removesuffix(output_path.suffix)
+                i = 1
+                while output_path.exists():
+                    output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
+                    i += 1
+                try:
+                    shutil.move(result[1], output_path)
+                except Exception as e:
+                    pathlib.Path(result[1]).unlink(missing_ok=True)
+                    print(f"失败: {result[2]} ({e})")
+                    yield len(images), False
+                    continue
+                print(f"完成: {output_path}")
+                yield len(images), True
+            else:
+                print(f"失败: {result[2]} ({result[3]})")
+                yield len(images), False
+
+        self.executor.shutdown()
     
     async def run(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, bool], None]:
         if not image_abs_paths:

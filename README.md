@@ -5,7 +5,9 @@
 
 ## 实现功能
 * 基于Python的Windows/Linux系统支持（由于DJI没有macOS的SDK，不受支持）
-* 输入多文件，输出批量报告
+* 多文件批量输入
+* 批量转换LUT/调色盘
+* 输出批量报告
 * 基于`asyncio`和`concurrent`的异步&进程池并行加速
 * 可从 DJI Thermal SDK 提供的10个LUT/调色盘中选择
   * `white_hot` | `fulgurite` | `iron_red` | `hot_iron`  | `medical`   | `arctic` | `rainbow1`  | `rainbow2`  | `tint` | `black_hot`
@@ -41,7 +43,58 @@
 ```bash
 python cli.py --help # 查看帮助信息
 ```
-
+## 命令
+* `cli.py report [OPTIONS] [输入文件夹]`
+  * 输出一份输入文件的信息报告，类似于DJI Thermal Analysis Tool
+  * 有一定技术基础的用户可自行调整 `template.html` 进行自定义
+  > **OPTIONS**
+  * `--dji`/`-d` 
+    * 可执行文件`dji_irp`的绝对路径。
+    * 如果没有输入，会在`$PATH`和工作目录下尝试搜索
+  * `--input`/`-i`
+    * 不希望输入文件夹时，可用该选项输入指定文件
+    * 可重复多次该选项，输入多个文件
+  * `--output`/`-o`
+    * 指定输出文件夹，默认为`工作目录/reports`
+  * `--temp`/`-t`
+    * 指定临时文件暂存文件夹，默认为`工作目录/temps`
+  * `--distance`/`-dis` 距离
+  * `--humidity`/`-hum` 空气湿度
+  * `--emissivity`/`-emi` 发射率
+  * `--ambient`/`-amv` 环境温度
+  * `--reflection`/`-ref` 反射温度
+  * `--brightness`/`-bri` 亮度
+  * `--palette`/`-p`
+    * 可从 SDK 提供的10个 LUT / 调色盘 中选择一个进行转换
+  * `--cbwidth`/`-cbw`
+    * 温度-颜色光谱图的宽度
+  * `--cbborder`/`--no-cbborder`
+    * 温度-颜色光谱图是否需要黑色边框
+  * `--weasy-lib`/`--no-weasy-lib`
+    * 决定以Python库形式还是以可执行文件形式调用`WeasyPrint`
+    * 对于Windows默认为`--no-weasy-lib`，需要把`weasyprint.exe`放到`$PATH`或工作目录下
+    * 对于Linux默认为`--weasy-lib`
+  * `--workers`/`-ws`
+    * 最大并发执行数，适当调高可有效加快处理
+* `cli.py palette [OPTIONS] [输入文件夹]`
+  * 批量转换图像到指定的LUT/调色盘（即使与原调色盘相同也会进行转换）
+  > **OPTIONS**
+  * `--dji`/`-d` 
+    * 可执行文件`dji_irp`的绝对路径。
+    * 如果没有输入，会在`$PATH`和工作目录下尝试搜索
+  * `--input`/`-i`
+    * 不希望输入文件夹时，可用该选项输入指定文件
+    * 可重复多次该选项，输入多个文件
+  * `--output`/`-o`
+    * 指定输出文件夹，默认为`工作目录/palette_changed`
+  * `--temp`/`-t`
+    * 指定临时文件暂存文件夹，默认为`工作目录/temps`
+  * `--palette`/`-p`
+    * 可从 SDK 提供的10个 LUT / 调色盘 中选择一个进行转换
+  * `--overwrite`/`-ow`
+    * 是否要覆盖同名的输出文件
+  * `--workers`/`-ws`
+    * 最大并发执行数，适当调高可有效加快处理
 ## 依赖
 * `exifread`
   * 读取图像`EXIF`数据
