@@ -24,11 +24,12 @@
 
    call ".\.venv\Scripts\activate.bat" # Windows: CMD
    .\.venv\Scripts\Activate.ps1 # Windows: Powershell
-   source .venv/bin/activate # macOS / Linux 
+   source .venv/bin/activate # Linux 
    ```
    ```bash
    # 安装依赖
-   pip install -r requirements.txt
+   pip install -r requirements-win.txt # Windows
+   pip install -r requirements-linux.txt # Linux
    ```
 3. 下载 [DJI Thermal SDK](https://www.dji.com/cn/downloads/softwares/dji-thermal-sdk)，解压其中的`utility/bin`文件夹得到`dji_irp`
 4. 配置`weasyprint`

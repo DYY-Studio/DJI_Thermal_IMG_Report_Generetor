@@ -1,0 +1,7 @@
+typer
+exifread
+jinja2
+pymupdf
+pillow >= 11.0.0
+xmltodict
+weasyprint
