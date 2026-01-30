@@ -84,7 +84,8 @@ class ThermalReportGenerator:
     def get_metadata(self, img_path: str | pathlib.Path):
         """从 APP1 Marker 提取元数据"""
         with open(img_path, mode='rb') as f:
-            tags = exifread.process_file(f, builtin_types = True, auto_seek = True)
+            tags = exifread.process_file(f, builtin_types = True)
+            f.seek(0)
             with Image.open(f) as img:
                 xmp = img.info.get('xmp', '')
                 if xmp:
@@ -116,7 +117,7 @@ class ThermalReportGenerator:
             "focal_length": get_tag('EXIF FocalLength'),
             "aperture": f"{float(get_tag('EXIF FNumber')):.1f}" if get_tag('EXIF FNumber') != "N/A" else "N/A",
             "create_time": datetime.datetime.fromisoformat(get_tag('@xmp:CreateDate')).strftime("%Y/%m/%d %H:%M:%S"),
-            "gps": f"{convert_to_decimal(get_tag('EXIF GPSLatitude')):.6f}, {convert_to_decimal(get_tag('EXIF GPSLongitude')):.6f}"
+            "gps": f"{convert_to_decimal(get_tag('GPS GPSLatitude')):.6f}, {convert_to_decimal(get_tag('GPS GPSLongitude')):.6f}"
         }
 
     async def process_thermal_async(self, img_path: str | pathlib.Path, task_id: str):
