@@ -28,8 +28,11 @@
    ```
    ```bash
    # 安装依赖
-   pip install -r requirements-win.txt # Windows
-   pip install -r requirements-linux.txt # Linux
+   # requirements/requirements-cli-* 适用于使用CLI版本的用户
+   # requirements/requirements-gui-* 适用于使用GUI版本的用户
+   # requirements/requirements-* 全都装上的用户
+   pip install -r requirements/requirements-win.txt # Windows
+   pip install -r requirements/requirements-linux.txt # Linux
    ```
 3. 下载 [DJI Thermal SDK](https://www.dji.com/cn/downloads/softwares/dji-thermal-sdk)，解压其中的`utility/bin`文件夹得到`dji_irp`
 4. 配置`weasyprint`
@@ -40,12 +43,16 @@
      * 运行时需要加上参数`--weasy-lib`（该参数在Windows下默认为False）
    * Linux
      * 根据[这里](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html)的指导，完成安装
-5. 运行CLI
+## GUI 图形化界面
+```bash
+flet run gui.py
+```
+## CLI 命令提示符界面
 ```bash
 python cli.py --help # 查看帮助信息
 ```
-## 命令
-* `cli.py report [OPTIONS] [输入文件夹]`
+### 命令
+* ```python cli.py report [OPTIONS] [输入文件夹]```
   * 输出一份输入文件的信息报告，类似于DJI Thermal Analysis Tool
   * 有一定技术基础的用户可自行调整 `template.html` 进行自定义
   > **OPTIONS**
@@ -77,7 +84,7 @@ python cli.py --help # 查看帮助信息
     * 对于Linux默认为`--weasy-lib`
   * `--workers`/`-ws`
     * 最大并发执行数，适当调高可有效加快处理
-* `cli.py palette [OPTIONS] [输入文件夹]`
+* `python cli.py palette [OPTIONS] [输入文件夹]`
   * 批量转换图像到指定的LUT/调色盘（即使与原调色盘相同也会进行转换）
   > **OPTIONS**
   * `--dji`/`-d` 
@@ -97,6 +104,8 @@ python cli.py --help # 查看帮助信息
   * `--workers`/`-ws`
     * 最大并发执行数，适当调高可有效加快处理
 ## 依赖
+* `flet`
+  * 基于Flutter的跨平台GUI界面
 * `exifread`
   * 读取图像`EXIF`数据
 * `pillow`, `xmltodict`
