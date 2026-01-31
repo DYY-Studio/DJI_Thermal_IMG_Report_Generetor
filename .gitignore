@@ -5,3 +5,8 @@
 /__pycache__
 /palette_changed
 /.vscode
+
+/components/__pycache__
+*.pyc
+
+dji_timgrg_config.json

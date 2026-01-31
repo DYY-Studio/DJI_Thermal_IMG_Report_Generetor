@@ -1,6 +1,6 @@
 import typer, pathlib, asyncio, os, shutil
 from rich.progress import Progress, MofNCompleteColumn, BarColumn, TimeRemainingColumn, TextColumn
-from main import ThermalReportGenerator
+from generator import ThermalReportGenerator
 from typing import Literal, Annotated, Optional
 
 app = typer.Typer(help="A tool to generate report of DJI R-JPEG (Thermal Image) based on [b i]dji_irp[/b i]")
@@ -96,6 +96,7 @@ def report(
             dummy_task = progress.add_task('Please wait...', total=None)
             task = None
             async for i, r in gen.run(input_files if input_files else None):
+                print(r['message'])
                 if not task:
                     progress.remove_task(dummy_task)
                     task = progress.add_task('Processing...', total=i)
@@ -148,7 +149,8 @@ def palette(
             temp_dir=pathlib.Path('./temps'),
             cli_path=cli_path,
             palette=palette,
-            max_workers=max_workers
+            max_workers=max_workers,
+            overwrite=overwrite
         )
         with Progress(
             TextColumn("[progress.description]{task.description}"), BarColumn(), MofNCompleteColumn(), TimeRemainingColumn(),
@@ -157,6 +159,7 @@ def palette(
             dummy_task = progress.add_task('Please wait...', total=None)
             task = None
             async for i, r in gen.run_palette_change(input_files if input_files else None):
+                print(r['message'])
                 if not task:
                     progress.remove_task(dummy_task)
                     task = progress.add_task('Processing...', total=i)

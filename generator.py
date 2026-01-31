@@ -235,7 +235,7 @@ class ThermalReportGenerator:
                 traceback.print_exc()
                 return None, None, img_name, e
             
-    async def run_palette_change(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, bool], None]:
+    async def run_palette_change(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
         if not image_abs_paths:
             images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
         else:
@@ -266,18 +266,15 @@ class ThermalReportGenerator:
                     shutil.move(result[1], output_path)
                 except Exception as e:
                     pathlib.Path(result[1]).unlink(missing_ok=True)
-                    print(f"失败: {result[2]} ({e})")
-                    yield len(images), False
+                    yield len(images), {'success': False, 'message': f"失败: {result[2]} ({e})"}
                     continue
-                print(f"完成: {output_path}")
-                yield len(images), True
+                yield len(images), {'success': True, 'message': f"完成: {output_path}"}
             else:
-                print(f"失败: {result[2]} ({result[3]})")
-                yield len(images), False
+                yield len(images), {'success': False, 'message': f"失败: {result[2]} ({result[3]})"}
 
         self.executor.shutdown()
     
-    async def run(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, bool], None]:
+    async def run(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
         if not image_abs_paths:
             images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
         else:
@@ -301,11 +298,9 @@ class ThermalReportGenerator:
             result = await task
             if result[0] is not None and result[1] is not None:
                 results[result[2]] = (result[0], result[1])
-                print(f"完成: {result[2]}")
-                yield len(images), True
+                yield len(images), {'success': True, 'message': f"完成: {result[2]}"}
             else:
-                print(f"失败: {result[2]} ({result[3]})")
-                yield len(images), False
+                yield len(images), {'success': False, 'message': f"失败: {result[2]} ({result[3]})"}
         
         # 筛选有效的 PDF 路径
         pdf_paths = [r[0] for r in results.values() if r]
