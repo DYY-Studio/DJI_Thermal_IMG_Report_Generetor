@@ -205,7 +205,6 @@ async def main(page: ft.Page):
                 return
             
             for k, v in all_config.items():
-                print(k, v)
                 if k == 'cli_path':
                     if (await check_dji_irp(v)) is not None:
                         dji_irp_textfield.value = v
