@@ -213,7 +213,7 @@ class ThermalReportGenerator:
                 
                 # 渲染 HTML
                 html_out = self.template.render(
-                    filename=img_name,
+                    filename=pathlib.Path(img_name).name,
                     image_path=pathlib.Path(png_path).absolute().as_uri(),
                     min_temp=t_min, max_temp=t_max,
                     palette_colors=get_palette(self.palette),
