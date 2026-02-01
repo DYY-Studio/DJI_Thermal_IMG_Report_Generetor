@@ -1,4 +1,4 @@
-import os, datetime, exifread, shutil, uuid, asyncio, pathlib, json, traceback, locale, xmltodict, fitz # PyMuPDF
+import os, re, datetime, exifread, shutil, uuid, asyncio, pathlib, json, traceback, locale, xmltodict, fitz # PyMuPDF
 from PIL import Image
 from jinja2 import Template
 from enum import Enum
@@ -20,6 +20,9 @@ class ThermalPalette(Enum):
     tint = 8
     black_hot = 9
     keep = 10
+
+def camel_to_snake(name: str):
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
 
 def get_palette(palette: ThermalPalette):
     palette_json = pathlib.Path(LUT_DIR) / f"lut{palette.value}.json"
@@ -74,7 +77,7 @@ class ThermalReportGenerator:
         self.ambient = ambient
         self.reflection = reflection
         self.brightness = brightness
-        self.palette = palette if isinstance(palette, ThermalPalette) else ThermalPalette._member_map_.get(palette, ThermalPalette.iron_red)
+        self.palette = palette if isinstance(palette, ThermalPalette) else ThermalPalette.__members__.get(palette, ThermalPalette.iron_red)
         self.colorbar_width = colorbar_width
         self.border = "border: 1px solid #000;" if colorbar_border else ""
         self.input_dir = input_dir
@@ -93,6 +96,7 @@ class ThermalReportGenerator:
 
     def get_metadata(self, img_path: str | pathlib.Path):
         """从 APP1 Marker 提取元数据"""
+        xmp = ''
         with open(img_path, mode='rb') as f:
             tags = exifread.process_file(f, builtin_types = True)
             f.seek(0)
@@ -108,18 +112,13 @@ class ThermalReportGenerator:
             
         def get_tag(key: str):
             result = str(tags.get(key, "N/A"))
-            if result != "N/A" and key.startswith("Exif"):
-                cache = []
-                for i in result.split(' '):
-                    if i.find('/'):
-                        j = i.split('/')
-                        if j[0].isdecimal() and j[1].isdecimal():
-                            cache.append(float(j[0]) / float(j[1]))
-                    else:
-                        cache.append(i)
-                if isinstance(cache[0], float):
-                    result = cache if len(cache) > 1 else str(cache[0])
             return result
+        
+        gps = (
+            convert_to_decimal(get_tag('GPS GPSLatitude')),
+            convert_to_decimal(get_tag('GPS GPSLongitude')),
+            tags.get('GPS GPSAltitude', 0.0)
+        )
 
         return {
             "model": get_tag('@tiff:Model'),
@@ -127,8 +126,80 @@ class ThermalReportGenerator:
             "focal_length": get_tag('EXIF FocalLength'),
             "aperture": f"{float(get_tag('EXIF FNumber')):.1f}" if get_tag('EXIF FNumber') != "N/A" else "N/A",
             "create_time": datetime.datetime.fromisoformat(get_tag('@xmp:CreateDate')).strftime("%Y/%m/%d %H:%M:%S"),
-            "gps": f"{convert_to_decimal(get_tag('GPS GPSLatitude')):.6f}, {convert_to_decimal(get_tag('GPS GPSLongitude')):.6f}"
+            "gps": f"{gps[0]:.6f}, {gps[1]:.6f}",
+            "palette": camel_to_snake(get_tag('EXIF ImageDescription')),
+            "raw_gps": gps,
+            "raw_xmp": xmp,
         }
+
+    async def measure_thermal_async(self, 
+            img_path: str | pathlib.Path, 
+            task_id: str, 
+            gps: tuple[float, float, float],
+            xmp: str,
+        ):
+        raw_out = pathlib.Path(self.temp_dir) / f"{task_id}.raw"
+        
+        cmd = [
+            "-a", "measure", "--measurefmt", "float32", "-s", str(img_path), "-o", raw_out, 
+        ]
+
+        proc = await asyncio.create_subprocess_exec(
+            self.cli_path, *cmd,
+            stdout=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        if not proc.returncode == 0 or not raw_out.exists():
+            return None
+        
+        result = stdout.decode(locale.getencoding())
+        w, h = 0, 0
+        for line in result.split('\n'):
+            if "image  width" in line:
+                w = int(line.split(':')[-1].strip())
+            if "image height" in line:
+                h = int(line.split(':')[-1].strip())
+        
+        import numpy as np
+        with open(raw_out, mode='rb') as f:
+            temp_data = np.fromfile(f, dtype=np.float32).reshape((h, w))
+
+        # gps: (lat, lon, alt)
+        pixel_scale = (1.0, 1.0, 0.0) 
+        tiepoint = (0.0, 0.0, 0.0, gps[1], gps[0], gps[2])
+
+        geo_keys = [
+            1, 1, 0, 3,  # 版本 1.1.0, 3 个 Key
+            # Key 1: GTModelTypeGeoKey (1024) = GeographicLatLong (2)
+            1024, 0, 1, 2,
+            # Key 2: GTRasterTypeGeoKey (1025) = RasterPixelIsArea (1)
+            1025, 0, 1, 1,
+            # Key 3: GeographicTypeGeoKey (2048) = WGS 84 (4326)
+            2048, 0, 1, 4326
+        ]
+
+        extra_tags = [
+            (33550, 'd', 3, pixel_scale, False), # ModelPixelScaleTag
+            (33922, 'd', 6, tiepoint, False),    # ModelTiepointTag
+            (34735, 'H', len(geo_keys), geo_keys, True)
+        ]
+
+        final_img_path = pathlib.Path(self.temp_dir) / f"{task_id}.tif"
+
+        import tifffile
+        await asyncio.to_thread(
+            tifffile.imwrite,
+            final_img_path,
+            temp_data,
+            photometric=tifffile.PHOTOMETRIC.MINISBLACK,
+            # description=xmp,
+            metadata=None,
+            extratags=extra_tags,
+        )
+
+        raw_out.unlink(missing_ok=True)
+
+        return final_img_path if final_img_path.exists() else None
 
     async def process_thermal_async(self, img_path: str | pathlib.Path, task_id: str):
         """调用 DJI SDK CLI 处理图像"""
@@ -145,7 +216,7 @@ class ThermalReportGenerator:
         (["--ambient", str(self.ambient),] if self.ambient else []) + \
         (["--reflection", str(self.reflection),] if self.reflection else []) + \
         (["-p", self.palette.name,] if self.palette != ThermalPalette.keep else [])
-        
+
         proc = await asyncio.create_subprocess_exec(
             self.cli_path, *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -208,7 +279,7 @@ class ThermalReportGenerator:
             print("错误: 未找到 weasyprint 库")
             raise
 
-    async def process_single_file(self, img_name: str, only_palette: bool = False):
+    async def process_single_file(self, img_name: str, work: Literal['report', 'palette', 'geotiff'] = 'report'):
         """单个文件的完整处理流水线"""
         async with self.semaphore:
             task_id = uuid.uuid4().hex
@@ -224,18 +295,32 @@ class ThermalReportGenerator:
                 if meta is None:
                     return None, None, img_name, "No InfraredCamera Image / Cannot find DJI XMP"
                 
+                if work == 'geotiff':
+                    tiff_path = await self.measure_thermal_async(full_path, task_id, meta['raw_gps'], meta['raw_xmp'])
+                    return None, tiff_path, img_name, None
+            
                 # SDK 处理
                 png_path, t_min, t_max, w, h = await self.process_thermal_async(full_path, task_id)
 
-                if only_palette:
+                if work == 'palette':
                     return None, png_path, img_name, None
+                
+                for key in ('raw_gps', 'raw_xmp', ):
+                    if key in meta: meta.pop(key)
                 
                 # 渲染 HTML
                 html_out = self.template.render(
                     filename=pathlib.Path(img_name).name,
                     image_path=pathlib.Path(png_path).absolute().as_uri(),
                     min_temp=t_min, max_temp=t_max,
-                    palette_colors=get_palette(self.palette),
+                    palette_colors = get_palette(
+                        self.palette 
+                        if self.palette != ThermalPalette.keep
+                        else ThermalPalette.__members__.get(
+                            meta['palette'], 
+                            ThermalPalette.iron_red
+                        )
+                    ),
                     width=w, height=h,
                     distance=f"{self.distance}", 
                     humidity=f"{self.humidity}", 
@@ -253,7 +338,40 @@ class ThermalReportGenerator:
             except Exception as e:
                 traceback.print_exc()
                 return None, None, img_name, e
-            
+
+    async def run_geotiff(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
+        if not image_abs_paths:
+            images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
+        else:
+            images = []
+            for f in image_abs_paths:
+                if not pathlib.Path(f).is_absolute():
+                    raise ValueError("Path in file list must be absolute!")
+                if str(f).lower().endswith(('.jpg', '.jpeg')):
+                    images.append(str(f))
+        if not images:
+            print("未发现待处理图片")
+            return
+        
+        self.output_dir = pathlib.Path(self.output_dir) / self.palette.name
+        self.output_dir.mkdir(exist_ok=True)
+        
+        tasks = [asyncio.create_task(self.process_single_file(img, work='geotiff')) for img in images]
+        for task in asyncio.as_completed(tasks):
+            result = await task
+            if result[0] is None and result[1] is not None:
+                output_path = pathlib.Path(self.output_dir) / result[2]
+                filename_out_ext = result[2].removesuffix(output_path.suffix)
+                i = 1
+                while output_path.exists():
+                    output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
+                    i += 1
+                yield len(images), {'success': True, 'message': f"完成: {output_path}"}
+            else:
+                yield len(images), {'success': False, 'message': f"失败: {result[2]} ({result[3]})"}
+
+        self.executor.shutdown()
+
     async def run_palette_change(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
         if not image_abs_paths:
             images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
@@ -271,7 +389,7 @@ class ThermalReportGenerator:
         self.output_dir = pathlib.Path(self.output_dir) / self.palette.name
         self.output_dir.mkdir(exist_ok=True)
         
-        tasks = [asyncio.create_task(self.process_single_file(img, only_palette=True)) for img in images]
+        tasks = [asyncio.create_task(self.process_single_file(img, work='palette')) for img in images]
         for task in asyncio.as_completed(tasks):
             result = await task
             if result[0] is None and result[1] is not None:
@@ -350,11 +468,11 @@ if __name__ == "__main__":
     gen = ThermalReportGenerator(
         input_dir="./input_images",
         output_dir="./reports",
-        temp_dir="./temp_dir",
+        temp_dir="./temps",
         cli_path=r"D:\Test\dji_thermal_sdk_v1.8_20250829\utility\bin\windows\release_x64\dji_irp.exe",
         palette=ThermalPalette.iron_red
     )
     async def _internal():
-        async for i in gen.run():
+        async for i in gen.run_geotiff():
             pass
     asyncio.run(_internal())
