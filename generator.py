@@ -366,6 +366,15 @@ class ThermalReportGenerator:
                 while output_path.exists():
                     output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
                     i += 1
+                try:
+                    shutil.move(result[1], output_path)
+                except Exception as e:
+                    pathlib.Path(result[1]).unlink(missing_ok=True)
+                    yield len(images), {'success': False, 'message': f"失败: {result[2]} ({e})"}
+                    continue
+                while output_path.exists():
+                    output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
+                    i += 1
                 yield len(images), {'success': True, 'message': f"完成: {output_path}"}
             else:
                 yield len(images), {'success': False, 'message': f"失败: {result[2]} ({result[3]})"}
