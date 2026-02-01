@@ -22,6 +22,14 @@ settings: dict[str, int | float | str | None] = {
     'jpeg_quality': 95,
     'jpeg_subsampling': '4:4:4'
 }
+preset_overwrite: dict[str, bool] = {
+    'distance': False,
+    'humidity': False,
+    'emissivity': False,
+    'ambient': False,
+    'reflection': False,
+    'palette': False,
+}
 font_preset = {
     "Windows": "Microsoft YaHei",
     "Linux": "Noto Sans CJK SC",
@@ -34,6 +42,58 @@ async def main(page: ft.Page):
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
     page.theme = ft.Theme(font_family=font_preset.get(platform.system(), "sans-serif"))
     page.window.prevent_close = True
+
+    weasyprint_method, which_weasyprint = await check_weasyprint()
+
+    dji_irp_textfield = ft.TextField(shutil.which('dji_irp'), max_lines=1, expand=True, read_only=True)
+    weasyprint_textfield = ft.TextField(
+        which_weasyprint if which_weasyprint else '',
+        max_lines=1, 
+        expand=True,
+        read_only=True
+    )
+
+    async def read_config():
+        global settings, preset_overwrite
+        import json
+        config_path = pathlib.Path(__file__).parent / 'dji_timgrg_config.json'
+        if not config_path.exists():
+            return
+        try:
+            with open(config_path, mode='r', encoding='utf-8') as f:
+                all_config: dict = json.load(f)
+            if not isinstance(all_config, dict):
+                return
+            
+            for k, v in all_config.items():
+                if k == 'cli_path':
+                    if (await check_dji_irp(v)) is not None:
+                        dji_irp_textfield.value = v
+                        dji_irp_textfield.update()
+                elif k == 'weasy_path':
+                    if weasyprint_method == 'none':
+                        if (await check_weasyprint(v))[0] == 'exe':
+                            weasyprint_textfield.value = v
+                            weasyprint_textfield.update()
+                elif k in settings and k != 'temp_dir' and isinstance(v, type(settings[k])):
+                    settings[k] = v
+        except Exception as e:
+            pass
+
+        config_path2 = pathlib.Path(__file__).parent / 'dji_timgrg_config2.json'
+        try:
+            with open(config_path2, mode='r', encoding='utf-8') as f:
+                preset_overwrite_cache: dict = json.load(f)
+            if not isinstance(preset_overwrite_cache, dict):
+                return
+            
+            for k, v in preset_overwrite_cache.items():
+                if k in preset_overwrite and isinstance(v, bool):
+                    preset_overwrite[k] = v
+        except Exception as e:
+            pass
+
+    await read_config()
 
     image_grid = ft.GridView(
         expand=True,
@@ -64,6 +124,10 @@ async def main(page: ft.Page):
                 v.update()
             # settings_view.update()
 
+    def on_preset_overwrite_value_change(value, key: str):
+        global preset_overwrite
+        preset_overwrite[key] = value
+
     palette_dropdown = ft.Dropdown(
         value='iron_red',
         options=[
@@ -80,7 +144,7 @@ async def main(page: ft.Page):
         ],
         text_size=13,
         height=44,
-        width=140,
+        width=180,
         editable=False,
         on_select=lambda _: on_settings_value_change(palette_dropdown.value, 'palette')
     )
@@ -153,7 +217,11 @@ async def main(page: ft.Page):
     settings_view = ft.Column(
         controls=[
             ft.Row([
-                ft.Text('Distance (m)', width=120),
+                ft.Checkbox(
+                    'Distance (m)', width=120,
+                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'distance'),
+                    value=preset_overwrite['distance']
+                ),
                 SpinBox(
                     value=settings['distance'],
                     min_val=1.0,
@@ -164,7 +232,11 @@ async def main(page: ft.Page):
                 )
             ]),
             ft.Row([
-                ft.Text('Humidity (%)', width=120),
+                ft.Checkbox(
+                    'Humidity (%)', width=120,
+                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'humidity'),
+                    value=preset_overwrite['humidity']
+                ),
                 SpinBox(
                     value=settings['humidity'],
                     min_val=20.0,
@@ -175,7 +247,11 @@ async def main(page: ft.Page):
                 )
             ]),
             ft.Row([
-                ft.Text('Emissivity (ε)', width=120),
+                ft.Checkbox(
+                    'Emissivity (ε)', width=120,
+                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'emissivity'),
+                    value=preset_overwrite['emissivity']
+                ),
                 SpinBox(
                     value=settings['emissivity'],
                     min_val=0.10,
@@ -186,7 +262,11 @@ async def main(page: ft.Page):
                 )
             ]),
             ft.Row([
-                ft.Text('Ambient (℃)', width=120),
+                ft.Checkbox(
+                    'Ambient (℃)', width=120,
+                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'ambient'),
+                    value=preset_overwrite['ambient']
+                ),
                 SpinBox(
                     value=settings['ambient'],
                     min_val=-40.0,
@@ -197,7 +277,11 @@ async def main(page: ft.Page):
                 )
             ]),
             ft.Row([
-                ft.Text('Reflection (℃)', width=120),
+                ft.Checkbox(
+                    'Reflection (℃)', width=120,
+                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'reflection'),
+                    value=preset_overwrite['reflection']
+                ),
                 SpinBox(
                     value=settings['reflection'],
                     min_val=-40.0,
@@ -230,7 +314,11 @@ async def main(page: ft.Page):
                 )
             ]),
             ft.Row([
-                ft.Text('Palette', width=120),
+                ft.Checkbox(
+                    'Palette', width=80,
+                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'palette'),
+                    value=preset_overwrite['palette']
+                ),
                 palette_dropdown
             ]),
             ft.Row([
@@ -262,45 +350,6 @@ async def main(page: ft.Page):
         ],
         wrap=True
     )
-
-    weasyprint_method, which_weasyprint = await check_weasyprint()
-
-    dji_irp_textfield = ft.TextField(shutil.which('dji_irp'), max_lines=1, expand=True, read_only=True)
-    weasyprint_textfield = ft.TextField(
-        which_weasyprint if which_weasyprint else '',
-        max_lines=1, 
-        expand=True,
-        read_only=True
-    )
-
-    async def read_config():
-        global settings
-        import json
-        config_path = pathlib.Path(__file__).parent / 'dji_timgrg_config.json'
-        if not config_path.exists():
-            return
-        try:
-            with open(config_path, mode='r', encoding='utf-8') as f:
-                all_config: dict = json.load(f)
-            if not isinstance(all_config, dict):
-                return
-            
-            for k, v in all_config.items():
-                if k == 'cli_path':
-                    if (await check_dji_irp(v)) is not None:
-                        dji_irp_textfield.value = v
-                        dji_irp_textfield.update()
-                elif k == 'weasy_path':
-                    if weasyprint_method == 'none':
-                        if (await check_weasyprint(v))[0] == 'exe':
-                            weasyprint_textfield.value = v
-                            weasyprint_textfield.update()
-                elif k in settings and k != 'temp_dir' and isinstance(v, type(settings[k])):
-                    settings[k] = v
-        except Exception as e:
-            pass
-
-    await read_config()
 
     uni_progress_bar = ft.ProgressBar(1.0)
     uni_progress_info = ft.Text("等待任务开始", text_align=ft.TextAlign.CENTER)
@@ -515,6 +564,11 @@ async def main(page: ft.Page):
         is_running = True
         tab_view.selected_index = 2
         tab_view.update()
+
+        temp_settings = settings.copy()
+        for setting, v in preset_overwrite.items():
+            if not v:
+                temp_settings[setting] = None if setting != 'palette' else 'keep'
         
         uni_progress_bar.value = 0
         uni_progress_bar.update()
@@ -523,7 +577,7 @@ async def main(page: ft.Page):
             output_dir=output_dir,
             cli_path=dji_irp_textfield.value,
             weasy_path=weasyprint_textfield.value if weasyprint_method == 'exe' else None,
-            **settings
+            **temp_settings
         )
 
         count = 1
@@ -606,14 +660,17 @@ async def main(page: ft.Page):
         uni_progress_info.update()
 
     async def save_config():
-        global settings
+        global settings, preset_overwrite
         import json
-        config_path = pathlib.Path(__file__).parent / 'dji_timgrg_config.json'
+        config_path1 = pathlib.Path(__file__).parent / 'dji_timgrg_config.json'
+        config_path2 = pathlib.Path(__file__).parent / 'dji_timgrg_config2.json'
         all_config = settings.copy()
         all_config['cli_path'] = dji_irp_textfield.value
         all_config['weasy_path'] = weasyprint_textfield.value
-        with open(config_path, mode='w', encoding='utf-8') as f:
+        with open(config_path1, mode='w', encoding='utf-8') as f:
             json.dump(all_config, f)
+        with open(config_path2, mode='w', encoding='utf-8') as f:
+            json.dump(preset_overwrite, f)
 
     async def handle_window_event(e: ft.WindowEvent):
         if e.type == ft.WindowEventType.CLOSE:

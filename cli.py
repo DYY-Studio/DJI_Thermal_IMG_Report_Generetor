@@ -23,29 +23,29 @@ def report(
         pathlib.Path, typer.Option("--temp", "-t", help="Directory for temporary RAW files")
     ] = pathlib.Path('./temps'),
     distance: Annotated[
-        float, typer.Option("--distance", "-dis", min=1.0, max=25.0)
-    ] = 5.0,
+        Optional[float], typer.Option("--distance", "-dis", min=1.0, max=25.0)
+    ] = None,
     humidity: Annotated[
-        float, typer.Option("--humidity", "-hum", min=20.0, max=100.0)
-    ] = 50.0,
+        Optional[float], typer.Option("--humidity", "-hum", min=20.0, max=100.0)
+    ] = None,
     emissivity: Annotated[
-        float, typer.Option("--emissivity", "-emi", min=0.10, max=1.00)
-    ] = 0.95,
+        Optional[float], typer.Option("--emissivity", "-emi", min=0.10, max=1.00)
+    ] = None,
     ambient: Annotated[
-        float, typer.Option("--ambient", "-amb", min=-40.0, max=80.0)
-    ] = 25.0,
+        Optional[float], typer.Option("--ambient", "-amb", min=-40.0, max=80.0)
+    ] = None,
     reflection: Annotated[
-        float, typer.Option("--reflection", "-ref", min=-40.0, max=500.0)
-    ] = 25.0,
+        Optional[float], typer.Option("--reflection", "-ref", min=-40.0, max=500.0)
+    ] = None,
     brightness: Annotated[
         int, typer.Option("--brightness", "-bri", min=0, max=100)
     ] = 50,
     palette: Annotated[
         Literal['white_hot', 'fulgurite', 'iron_red', 
                 'hot_iron', 'medical', 'arctic', 'rainbow1', 
-                'rainbow2', 'tint', 'black_hot'], 
+                'rainbow2', 'tint', 'black_hot', 'keep'], 
         typer.Option("--palette", "-p")
-    ] = 'iron_red',
+    ] = 'keep',
     colorbar_width: Annotated[
         int, typer.Option("--cbwidth", "-cbw", min=1, max=100, help='Width of Temperature-Color Bar')
     ] = 10,
@@ -145,6 +145,9 @@ def palette(
     output_dir: Annotated[
         pathlib.Path, typer.Option("--output", "-o", help="Directory for saving PDFs")
     ] = pathlib.Path('./palette_changed'),
+    brightness: Annotated[
+        int, typer.Option("--brightness", "-bri", min=0, max=100)
+    ] = 50,
     palette: Annotated[
         Literal['white_hot', 'fulgurite', 'iron_red', 
                 'hot_iron', 'medical', 'arctic', 'rainbow1', 
@@ -192,6 +195,7 @@ def palette(
             output_dir=output_dir,
             temp_dir=pathlib.Path('./temps'),
             cli_path=cli_path,
+            brightness=brightness,
             palette=palette,
             max_workers=max_workers,
             overwrite=overwrite,

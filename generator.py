@@ -19,6 +19,7 @@ class ThermalPalette(Enum):
     rainbow2 = 7
     tint = 8
     black_hot = 9
+    keep = 10
 
 def get_palette(palette: ThermalPalette):
     palette_json = pathlib.Path(LUT_DIR) / f"lut{palette.value}.json"
@@ -46,14 +47,14 @@ class ThermalReportGenerator:
             temp_dir: str | pathlib.Path,
             cli_path: str | pathlib.Path,
             weasy_path: Optional[str | pathlib.Path] = None,
-            distance: float = 5.0,
-            humidity: float = 50.0,
-            emissivity: float = 0.95,
-            ambient: float = 25.0,
-            reflection: float = 25.0,
+            distance: Optional[float] = None, # 5.0
+            humidity: Optional[float] = None, # 50.0
+            emissivity: Optional[float] = None, # 0.95
+            ambient: Optional[float] = None, # 25.0
+            reflection: Optional[float] = None, # 25.0
             brightness: int = 50,
             palette: ThermalPalette | Literal['white_hot', 'fulgurite', 'iron_red',
-    'hot_iron', 'medical', 'arctic', 'rainbow1', 'rainbow2', 'tint', 'black_hot'] = ThermalPalette.iron_red,
+    'hot_iron', 'medical', 'arctic', 'rainbow1', 'rainbow2', 'tint', 'black_hot', 'keep'] = ThermalPalette.keep,
             colorbar_width: int = 10,
             colorbar_border: bool = False,
             img_format: Literal['png', 'jpeg'] = 'png',
@@ -136,14 +137,15 @@ class ThermalReportGenerator:
         # 生成伪彩色图像数据 (RGB 格式)
         cmd = [
             "-a", "process", "-s", str(img_path), "-o", raw_out, 
-            "-p", self.palette.name,
-            "--distance", str(self.distance),
-            "--humidity", str(self.humidity),
-            "--emissivity", str(self.emissivity),
-            "--ambient", str(self.ambient),
-            "--reflection", str(self.reflection),
-            "--brightness", str(self.brightness)
-        ]
+            "--brightness", str(self.brightness),
+        ] + \
+        (["--distance", str(self.distance),] if self.distance else []) + \
+        (["--humidity", str(self.humidity),] if self.humidity else []) + \
+        (["--emissivity", str(self.emissivity),] if self.emissivity else []) + \
+        (["--ambient", str(self.ambient),] if self.ambient else []) + \
+        (["--reflection", str(self.reflection),] if self.reflection else []) + \
+        (["-p", self.palette.name,] if self.palette != ThermalPalette.keep else [])
+        
         proc = await asyncio.create_subprocess_exec(
             self.cli_path, *cmd,
             stdout=asyncio.subprocess.PIPE,
