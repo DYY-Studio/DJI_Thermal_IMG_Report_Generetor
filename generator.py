@@ -56,6 +56,10 @@ class ThermalReportGenerator:
     'hot_iron', 'medical', 'arctic', 'rainbow1', 'rainbow2', 'tint', 'black_hot'] = ThermalPalette.iron_red,
             colorbar_width: int = 10,
             colorbar_border: bool = False,
+            img_format: Literal['png', 'jpeg'] = 'png',
+            png_compress: int = 6,
+            jpeg_quality: int = 95,
+            jpeg_subsampling: Literal['4:4:4', '4:2:2', '4:2:0'] = '4:4:4',
             max_workers: int = 4
         ):
         pathlib.Path(output_dir).mkdir(exist_ok=True)
@@ -77,6 +81,11 @@ class ThermalReportGenerator:
         self.cli_path = cli_path
         self.temp_dir = temp_dir
         self.weasy_path = weasy_path
+
+        self.img_format = img_format
+        self.png_compress = png_compress
+        self.jpeg_quality = jpeg_quality
+        self.jpeg_subsampling = jpeg_subsampling
 
         self.semaphore = asyncio.Semaphore(max_workers)
         self.executor = ProcessPoolExecutor(max_workers=max_workers)
@@ -155,12 +164,20 @@ class ThermalReportGenerator:
             if "image height" in line:
                 h = int(line.split(':')[-1].strip())
 
-        # 将 Raw RGB 转换为 PNG
+        # 将 Raw RGB 转换指定格式
         with open(raw_out, "rb") as f:
             img = Image.frombytes("RGB", (w, h), f.read())
         
-        final_img_path = pathlib.Path(self.temp_dir) / f"{task_id}.png"
-        img.save(final_img_path)
+        final_img_path = pathlib.Path(self.temp_dir) / f"{task_id}.{self.img_format}"
+
+        params = {'compress_level': self.png_compress}
+        if self.img_format == 'jpeg':
+            params = {
+                'quality': self.jpeg_quality,
+                'subsampling': self.jpeg_subsampling
+            }
+
+        await asyncio.to_thread(img.save, final_img_path, self.img_format, **params)
 
         raw_out.unlink(missing_ok=True)
         

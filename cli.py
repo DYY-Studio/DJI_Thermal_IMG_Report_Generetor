@@ -55,8 +55,21 @@ def report(
     weasy_lib: Annotated[
         bool, typer.Option(help='Use WeasyPrint executable instead of Library in Windows')
     ] = False if os.name == 'nt' else True,
+    img_format: Annotated[
+        Literal['png', 'jpeg'], typer.Option('--img-format', '--iformat', help='Choose JPEG may lead to smaller PDF')
+    ] = 'png',
+    png_compress: Annotated[
+        int, typer.Option('--png-compress', '-pcom', help='higher = smaller but slower', max=9, min=0)
+    ] = 6,
+    jpeg_quality: Annotated[
+        int, typer.Option('--jpeg-quality', '-jqua',help='higher (<= 95) = bigger and better', max=100, min=0)
+    ] = 95,
+    jpeg_subsampling: Annotated[
+        Literal['4:4:4', '4:2:2', '4:2:0', '0', '1', '2'], 
+        typer.Option('--jpeg-subsampling', '-jsub', help='0 = 4:4:4, 1 = 4:2:2, 2 = 4:2:0')
+    ] = '4:4:4',
     max_workers: Annotated[
-        int, typer.Option("--workers", "-ws", min=1, max=32, help='Max workers of concurrent process')
+        int, typer.Option("--workers", "-ws", min=1, help='Max workers of concurrent process')
     ] = 4
 ):
     if not cli_path:
@@ -67,6 +80,13 @@ def report(
         raise ValueError("No any input")
     if not weasy_lib and not shutil.which('weasyprint'):
         raise FileNotFoundError("Invaild WreayPrint executable path")
+    
+    if ':' not in jpeg_subsampling:
+        jpeg_subsampling = {
+            '0': '4:4:4',
+            '1': '4:2:2',
+            '2': '4:2:0'
+        }[jpeg_subsampling]
     
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -87,6 +107,10 @@ def report(
             palette=palette,
             colorbar_width=colorbar_width,
             colorbar_border=cbborder,
+            img_format=img_format,
+            png_compress=png_compress,
+            jpeg_quality=jpeg_quality,
+            jpeg_subsampling=jpeg_subsampling,
             max_workers=max_workers
         )
         with Progress(
@@ -130,6 +154,19 @@ def palette(
     overwrite: Annotated[
         bool, typer.Option("--overwrite", "-ow", help="Overwrite exist output file or rename new file")
     ] = False,
+    img_format: Annotated[
+        Literal['png', 'jpeg'], typer.Option('--img-format', '--iformat', help='Choose JPEG may lead to smaller PDF')
+    ] = 'png',
+    png_compress: Annotated[
+        int, typer.Option('--png-compress', '-pcom', help='higher = smaller but slower', max=9, min=0)
+    ] = 6,
+    jpeg_quality: Annotated[
+        int, typer.Option('--jpeg-quality', '-jqua',help='higher (<= 95) = bigger and better', max=100, min=0)
+    ] = 95,
+    jpeg_subsampling: Annotated[
+        Literal['4:4:4', '4:2:2', '4:2:0', '0', '1', '2'], 
+        typer.Option('--jpeg-subsampling', '-jsub', help='0 = 4:4:4, 1 = 4:2:2, 2 = 4:2:0')
+    ] = '4:4:4',
     max_workers: Annotated[
         int, typer.Option("--workers", "-ws", min=1, max=32, help='Max workers of concurrent process')
     ] = 4
@@ -138,6 +175,13 @@ def palette(
         cli_path = shutil.which('dji_irp')
     if not cli_path or not pathlib.Path(cli_path).exists():
         raise FileNotFoundError("Cannot find dji_irp executable")
+    
+    if ':' not in jpeg_subsampling:
+        jpeg_subsampling = {
+            '0': '4:4:4',
+            '1': '4:2:2',
+            '2': '4:2:0'
+        }[jpeg_subsampling]
     
     if os.name == 'nt':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -150,7 +194,11 @@ def palette(
             cli_path=cli_path,
             palette=palette,
             max_workers=max_workers,
-            overwrite=overwrite
+            overwrite=overwrite,
+            img_format=img_format,
+            png_compress=png_compress,
+            jpeg_quality=jpeg_quality,
+            jpeg_subsampling=jpeg_subsampling
         )
         with Progress(
             TextColumn("[progress.description]{task.description}"), BarColumn(), MofNCompleteColumn(), TimeRemainingColumn(),

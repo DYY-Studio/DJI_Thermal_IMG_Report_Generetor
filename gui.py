@@ -16,7 +16,11 @@ settings: dict[str, int | float | str | None] = {
     'colorbar_width': 10,
     'colorbar_border': False,
     'max_workers': 4,
-    'palette': 'iron_red'
+    'palette': 'iron_red',
+    'img_format': 'png',
+    'png_compress': 6,
+    'jpeg_quality': 95,
+    'jpeg_subsampling': '4:4:4'
 }
 font_preset = {
     "Windows": "Microsoft YaHei",
@@ -51,9 +55,14 @@ async def main(page: ft.Page):
         alignment=ft.Alignment.CENTER
     )
 
-    def on_settings_value_change(v, key: str):
+    def on_settings_value_change(value, key: str):
         global settings
-        settings[key] = v
+        settings[key] = value
+        if key == 'img_format':
+            for k, v in img_settings.items():
+                v.visible = k.startswith(value)
+                v.update()
+            # settings_view.update()
 
     palette_dropdown = ft.Dropdown(
         value='iron_red',
@@ -70,11 +79,76 @@ async def main(page: ft.Page):
             ft.DropdownOption('black_hot')
         ],
         text_size=13,
-        height=38,
+        height=44,
         width=140,
         editable=False,
-        on_select=lambda _: on_settings_value_change(palette_dropdown.key, 'palette')
+        on_select=lambda _: on_settings_value_change(palette_dropdown.value, 'palette')
     )
+
+    imgformat_dropdown = ft.Dropdown(
+        value='png',
+        options=[
+            ft.DropdownOption('png'),
+            ft.DropdownOption('jpeg'), 
+        ],
+        text_size=13,
+        height=44,
+        width=140,
+        editable=False,
+        on_select=lambda _: on_settings_value_change(imgformat_dropdown.value, 'img_format')
+    )
+
+    subsampling_dropdown = ft.Dropdown(
+        value='4:4:4',
+        options=[
+            ft.DropdownOption('4:4:4'),
+            ft.DropdownOption('4:2:2'), 
+            ft.DropdownOption('4:2:0'), 
+        ],
+        text_size=13,
+        height=44,
+        width=140,
+        editable=False,
+        on_select=lambda _: on_settings_value_change(subsampling_dropdown.value, 'jpeg_subsampling')
+    )
+
+    img_settings = {
+        'jpeg_quality': ft.Row(
+            [
+                ft.Text('JPEG Quality', width=120),
+                SpinBox(
+                    value=settings['jpeg_quality'],
+                    min_val=0,
+                    max_val=100,
+                    precision=0,
+                    step=1,
+                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'jpeg_quality')
+                ),
+            ],
+            visible=imgformat_dropdown.value == 'jpeg'
+        ),
+        'jpeg_subsampling': ft.Row(
+            [
+                ft.Text('JPEG Subsample', width=120),
+                subsampling_dropdown
+            ],
+            visible=imgformat_dropdown.value == 'jpeg'
+        ),
+        'png_compress': ft.Row(
+            [
+                ft.Text('PNG Compress', width=120),
+                SpinBox(
+                    value=settings['png_compress'],
+                    min_val=0,
+                    max_val=9,
+                    precision=0,
+                    step=1,
+                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'png_compress')
+                ),
+            ],
+            visible=imgformat_dropdown.value == 'png'
+        )
+    }
 
     settings_view = ft.Column(
         controls=[
@@ -145,17 +219,6 @@ async def main(page: ft.Page):
                 )
             ]),
             ft.Row([
-                ft.Text('Colorbar Width', width=120),
-                SpinBox(
-                    value=settings['colorbar_width'],
-                    min_val=5,
-                    max_val=100,
-                    precision=0,
-                    step=1,
-                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'colorbar_width')
-                )
-            ]),
-            ft.Row([
                 ft.Text('Max Workers', width=120),
                 SpinBox(
                     value=settings['max_workers'],
@@ -171,6 +234,17 @@ async def main(page: ft.Page):
                 palette_dropdown
             ]),
             ft.Row([
+                ft.Text('Colorbar Width', width=120),
+                SpinBox(
+                    value=settings['colorbar_width'],
+                    min_val=5,
+                    max_val=100,
+                    precision=0,
+                    step=1,
+                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'colorbar_width')
+                )
+            ]),
+            ft.Row([
                 ft.Text('Colorbar Border', width=120),
                 ft.Checkbox(
                     ft.Text('Enable'), 
@@ -178,6 +252,13 @@ async def main(page: ft.Page):
                     on_change=lambda e: on_settings_value_change(e.data, 'colorbar_border')
                 )
             ]),
+            ft.Row([
+                ft.Text('Image Format', width=120),
+                imgformat_dropdown
+            ]),
+            img_settings['jpeg_quality'],
+            img_settings['jpeg_subsampling'],
+            img_settings['png_compress']
         ],
         wrap=True
     )
