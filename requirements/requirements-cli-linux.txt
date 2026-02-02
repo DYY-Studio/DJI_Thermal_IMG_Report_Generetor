@@ -5,3 +5,4 @@ pymupdf
 pillow >= 11.0.0
 xmltodict
 weasyprint
+aiofiles

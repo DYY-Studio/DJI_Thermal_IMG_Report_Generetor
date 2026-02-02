@@ -45,7 +45,7 @@
      * 根据[这里](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html)的指导，完成安装
 ## GUI 图形化界面
 ```bash
-flet run gui.py
+flet run main.py
 ```
 ## CLI 命令提示符界面
 ```bash

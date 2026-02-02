@@ -6,3 +6,4 @@ xmltodict
 weasyprint
 flet[all] == 0.80.5
 typer
+aiofiles

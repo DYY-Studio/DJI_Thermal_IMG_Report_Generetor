@@ -170,6 +170,10 @@ def palette(
         Literal['4:4:4', '4:2:2', '4:2:0', '0', '1', '2'], 
         typer.Option('--jpeg-subsampling', '-jsub', help='0 = 4:4:4, 1 = 4:2:2, 2 = 4:2:0')
     ] = '4:4:4',
+    jpeg_keepdata: Annotated[
+        bool, 
+        typer.Option('--jpeg-keepdata', '-jkep', help='Keep raw DJI data (~640KB+)')
+    ] = False,
     max_workers: Annotated[
         int, typer.Option("--workers", "-ws", min=1, max=32, help='Max workers of concurrent process')
     ] = 4
@@ -202,7 +206,8 @@ def palette(
             img_format=img_format,
             png_compress=png_compress,
             jpeg_quality=jpeg_quality,
-            jpeg_subsampling=jpeg_subsampling
+            jpeg_subsampling=jpeg_subsampling,
+            jpeg_keepdata=jpeg_keepdata
         )
         with Progress(
             TextColumn("[progress.description]{task.description}"), BarColumn(), MofNCompleteColumn(), TimeRemainingColumn(),

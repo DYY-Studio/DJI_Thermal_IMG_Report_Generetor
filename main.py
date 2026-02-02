@@ -20,7 +20,8 @@ settings: dict[str, int | float | str | None] = {
     'img_format': 'png',
     'png_compress': 6,
     'jpeg_quality': 95,
-    'jpeg_subsampling': '4:4:4'
+    'jpeg_subsampling': '4:4:4',
+    'jpeg_keepdata': False
 }
 preset_overwrite: dict[str, bool] = {
     'distance': False,
@@ -37,11 +38,27 @@ font_preset = {
 }
 is_running = False
 
+def SettingRow(title: str, subtitle: str, control: ft.Control, visible: bool = True):
+    return ft.Container(
+        content=ft.Row([
+            ft.Column([
+                ft.Text(title, size=16, weight=ft.FontWeight.W_500),
+                ft.Text(subtitle, size=12, color=ft.Colors.OUTLINE),
+            ], expand=True, spacing=2),
+            # 这里放置控制组件（Switch 或 SpinBox）
+            ft.Container(content=control, alignment=ft.Alignment.CENTER_RIGHT)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+        padding=ft.Padding.symmetric(vertical=10, horizontal=15),
+        border=ft.Border.only(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
+        visible=visible
+    )
+
 async def main(page: ft.Page):
     page.title = "DJI Thermal Image Report Generator"
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
     page.theme = ft.Theme(font_family=font_preset.get(platform.system(), "sans-serif"))
     page.window.prevent_close = True
+    file_picker = ft.FilePicker()
 
     weasyprint_method, which_weasyprint = await check_weasyprint()
 
@@ -144,7 +161,7 @@ async def main(page: ft.Page):
         ],
         text_size=13,
         height=44,
-        width=180,
+        width=140,
         editable=False,
         on_select=lambda _: on_settings_value_change(palette_dropdown.value, 'palette')
     )
@@ -177,63 +194,76 @@ async def main(page: ft.Page):
     )
 
     img_settings = {
-        'jpeg_quality': ft.Row(
-            [
-                ft.Text('JPEG Quality', width=120),
-                SpinBox(
-                    value=settings['jpeg_quality'],
-                    min_val=0,
-                    max_val=100,
-                    precision=0,
-                    step=1,
-                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'jpeg_quality')
-                ),
-            ],
+        'jpeg_quality': SettingRow(
+            'JPEG Quality',
+            'Higher Better and Bigger. Effective when lower than 96',
+            SpinBox(
+                value=settings['jpeg_quality'],
+                min_val=0,
+                max_val=100,
+                precision=0,
+                step=1,
+                on_change=lambda v: on_settings_value_change(int(float(v.data)), 'jpeg_quality')
+            ),
             visible=imgformat_dropdown.value == 'jpeg'
         ),
-        'jpeg_subsampling': ft.Row(
-            [
-                ft.Text('JPEG Subsample', width=120),
-                subsampling_dropdown
-            ],
+        'jpeg_subsampling': SettingRow(
+            'JPEG Subsampling',
+            'Reduce size but lose a little quality',
+            subsampling_dropdown,
             visible=imgformat_dropdown.value == 'jpeg'
         ),
-        'png_compress': ft.Row(
-            [
-                ft.Text('PNG Compress', width=120),
-                SpinBox(
-                    value=settings['png_compress'],
-                    min_val=0,
-                    max_val=9,
-                    precision=0,
-                    step=1,
-                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'png_compress')
-                ),
-            ],
+        'jpeg_keepdata': SettingRow(
+            'JPEG Keep Data',
+            'Keep raw DJI thermal data (~640KB) in JPEG Header.',
+            ft.Switch(
+                on_change=lambda e: on_settings_value_change(e.data, 'jpeg_keepdata'),
+                value=settings['jpeg_keepdata']
+            ),
+            visible=imgformat_dropdown.value == 'jpeg'
+        ),
+        'png_compress': SettingRow(
+            'PNG Compress',
+            'Higher Smaller Slower',
+            SpinBox(
+                value=settings['png_compress'],
+                min_val=0,
+                max_val=9,
+                precision=0,
+                step=1,
+                on_change=lambda v: on_settings_value_change(int(float(v.data)), 'png_compress')
+            ),
             visible=imgformat_dropdown.value == 'png'
         )
     }
 
-    settings_view = ft.Column(
+    settings_view = ft.ListView(
         controls=[
-            ft.Row([
-                ft.Checkbox(
-                    'Distance (m)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'distance'),
-                    value=preset_overwrite['distance']
-                ),
-                SpinBox(
-                    value=settings['distance'],
-                    min_val=1.0,
-                    max_val=25.0,
-                    precision=1,
-                    step=0.1,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'distance')
-                )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Humidity (%)', width=120,
+            SettingRow(
+                'Distance (m)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Distance (m)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'distance'),
+                        value=preset_overwrite['distance']
+                    ),
+                    SpinBox(
+                        value=settings['distance'],
+                        min_val=1.0,
+                        max_val=25.0,
+                        precision=1,
+                        step=0.1,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'distance')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Humidity (%)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                ft.Switch(
+                    # 'Humidity (%)', width=120,
                     on_change=lambda e: on_preset_overwrite_value_change(e.data, 'humidity'),
                     value=preset_overwrite['humidity']
                 ),
@@ -245,54 +275,68 @@ async def main(page: ft.Page):
                     step=0.1,
                     on_change=lambda v: on_settings_value_change(float(v.data), 'humidity')
                 )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Emissivity (ε)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'emissivity'),
-                    value=preset_overwrite['emissivity']
-                ),
-                SpinBox(
-                    value=settings['emissivity'],
-                    min_val=0.10,
-                    max_val=1.00,
-                    precision=2,
-                    step=0.01,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'emissivity')
-                )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Ambient (℃)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'ambient'),
-                    value=preset_overwrite['ambient']
-                ),
-                SpinBox(
-                    value=settings['ambient'],
-                    min_val=-40.0,
-                    max_val=80.00,
-                    precision=1,
-                    step=0.1,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'ambient')
-                )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Reflection (℃)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'reflection'),
-                    value=preset_overwrite['reflection']
-                ),
-                SpinBox(
-                    value=settings['reflection'],
-                    min_val=-40.0,
-                    max_val=500.0,
-                    precision=1,
-                    step=0.1,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'reflection')
-                )
-            ]),
-            ft.Row([
-                ft.Text('Brightness', width=120),
+            ])
+            ),
+            SettingRow(
+                'Emissivity (ε)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Emissivity (ε)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'emissivity'),
+                        value=preset_overwrite['emissivity']
+                    ),
+                    SpinBox(
+                        value=settings['emissivity'],
+                        min_val=0.10,
+                        max_val=1.00,
+                        precision=2,
+                        step=0.01,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'emissivity')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Ambient (℃)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Ambient (℃)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'ambient'),
+                        value=preset_overwrite['ambient']
+                    ),
+                    SpinBox(
+                        value=settings['ambient'],
+                        min_val=-40.0,
+                        max_val=80.00,
+                        precision=1,
+                        step=0.1,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'ambient')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Reflection (℃)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Reflection (℃)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'reflection'),
+                        value=preset_overwrite['reflection']
+                    ),
+                    SpinBox(
+                        value=settings['reflection'],
+                        min_val=-40.0,
+                        max_val=500.0,
+                        precision=1,
+                        step=0.1,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'reflection')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Brightness',
+                'Brightness of output image',
                 SpinBox(
                     value=settings['brightness'],
                     min_val=0,
@@ -301,9 +345,10 @@ async def main(page: ft.Page):
                     step=1,
                     on_change=lambda v: on_settings_value_change(int(float(v.data)), 'brigetness')
                 )
-            ]),
-            ft.Row([
-                ft.Text('Max Workers', width=120),
+            ),
+            SettingRow(
+                'Max Workers',
+                'Concurrent tasks to generate result faster',
                 SpinBox(
                     value=settings['max_workers'],
                     min_val=1,
@@ -312,17 +357,22 @@ async def main(page: ft.Page):
                     step=1,
                     on_change=lambda v: on_settings_value_change(int(float(v.data)), 'max_workers')
                 )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Palette', width=80,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'palette'),
-                    value=preset_overwrite['palette']
-                ),
-                palette_dropdown
-            ]),
-            ft.Row([
-                ft.Text('Colorbar Width', width=120),
+            ),
+            SettingRow(
+                'Palette',
+                'Palette for output image',
+                ft.Row([
+                    ft.Switch(
+                        # 'Palette', width=80,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'palette'),
+                        value=preset_overwrite['palette']
+                    ),
+                    palette_dropdown
+                ])
+            ),
+            SettingRow(
+                'Colorbar Width',
+                'Set width of temperature-color bar',
                 SpinBox(
                     value=settings['colorbar_width'],
                     min_val=5,
@@ -331,29 +381,39 @@ async def main(page: ft.Page):
                     step=1,
                     on_change=lambda v: on_settings_value_change(int(float(v.data)), 'colorbar_width')
                 )
-            ]),
-            ft.Row([
-                ft.Text('Colorbar Border', width=120),
-                ft.Checkbox(
-                    ft.Text('Enable'), 
+            ),
+            SettingRow(
+                'Colorbar Border',
+                'Whether temperature-color bar has border',
+                ft.Switch(
                     value=settings['colorbar_border'], 
                     on_change=lambda e: on_settings_value_change(e.data, 'colorbar_border')
                 )
-            ]),
-            ft.Row([
-                ft.Text('Image Format', width=120),
+            ),
+            SettingRow(
+                'Image Format',
+                'PNG for Lossles, JPEG for SMALL SIZE',
                 imgformat_dropdown
-            ]),
+            ),
             img_settings['jpeg_quality'],
             img_settings['jpeg_subsampling'],
+            img_settings['jpeg_keepdata'],
             img_settings['png_compress']
         ],
-        wrap=True
+        # wrap=True
     )
 
     uni_progress_bar = ft.ProgressBar(1.0)
     uni_progress_info = ft.Text("等待任务开始", text_align=ft.TextAlign.CENTER)
-    uni_progress_log = ft.ListView(controls=[ft.Text("系统启动")], expand=True, auto_scroll=True, margin=10, divider_thickness = 5)
+    uni_progress_log = ft.ListView(
+        controls=[ft.Container(ft.Text("系统启动"), border=ft.Border.only(
+            top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+        ))], 
+        expand=True, 
+        auto_scroll=True, 
+        margin=10, 
+        divider_thickness = 5
+    )
 
     tab_view = ft.Tabs(
         selected_index=0,
@@ -396,7 +456,7 @@ async def main(page: ft.Page):
                                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                         margin=10
                                     ),
-                                    border=ft.Border.all(3, color=ft.Colors.BLUE),
+                                    border=ft.Border.all(side=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
                                     expand=True,
                                     border_radius=10
                                 )
@@ -413,19 +473,20 @@ async def main(page: ft.Page):
 
     main_container = ft.Container(
         tab_view,
-        expand=True
+        expand=True,
+        border=ft.Border.only(left=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT))
     )
 
-    async def on_select_all(e: ft.ControlEventHandler[ft.Checkbox]):
+    async def on_select_all(e: ft.ControlEventHandler[ft.Switch]):
         for item in image_grid.controls:
             item: GalleryItem
             if item.is_selected != select_all_checkbox.value:
                 item.toggle_selection(e)
 
-    select_all_checkbox = ft.Checkbox(
-        "全选", 
+    select_all_checkbox = ft.Switch(
+        label="选择全部图像", 
         on_change=on_select_all,
-        expand=True
+        expand=True,
     )
 
     async def on_files_remove(e: ft.ControlEventHandler[ft.Button]):
@@ -440,7 +501,7 @@ async def main(page: ft.Page):
             image_grid_container.update()
 
     async def on_executable_pick():
-        file = await ft.FilePicker().pick_files(
+        file = await file_picker.pick_files(
             dialog_title="选择可执行文件",
             allow_multiple=False,
             file_type=ft.FilePickerFileType.CUSTOM,
@@ -466,7 +527,7 @@ async def main(page: ft.Page):
             weasyprint_textfield.update()
 
     async def on_files_pick(e):
-        files = await ft.FilePicker().pick_files(
+        files = await file_picker.pick_files(
             dialog_title='选择DJI R-JPEG文件',
             allow_multiple=True, 
             file_type=ft.FilePickerFileType.CUSTOM, 
@@ -557,7 +618,7 @@ async def main(page: ft.Page):
 
         weasyprint_method = check_result[0]
         
-        output_dir = await ft.FilePicker().get_directory_path("选择输出文件夹")
+        output_dir = await file_picker.get_directory_path("选择输出文件夹")
         if not output_dir:
             return
         
@@ -585,7 +646,12 @@ async def main(page: ft.Page):
             uni_progress_bar.value = count / i
             uni_progress_info.value = f"正在处理报告 {count}/{i}"
             uni_progress_log.controls.append(
-                ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400)
+                ft.Container(
+                    ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400), 
+                    border=ft.Border.only(
+                        top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                    )
+                )
             )
             if len(uni_progress_log.controls) > 1000:
                 uni_progress_log.controls.pop(0)
@@ -597,7 +663,12 @@ async def main(page: ft.Page):
         is_running = False
         uni_progress_info.value = f"任务已完成"
         uni_progress_log.controls.append(
-            ft.Text(f'任务已完成，请检查输出文件夹 "{output_dir}"')
+            ft.Container(
+                ft.Text(f'任务已完成，请检查输出文件夹 "{output_dir}"'), 
+                border=ft.Border.only(
+                    top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                )
+            )
         )
         uni_progress_log.update()
         uni_progress_info.update()
@@ -618,7 +689,7 @@ async def main(page: ft.Page):
             page.show_dialog(no_dji_irp_alert)
             return
         
-        output_dir = await ft.FilePicker().get_directory_path("选择输出文件夹")
+        output_dir = await file_picker.get_directory_path("选择输出文件夹")
         if not output_dir:
             return
         
@@ -638,11 +709,16 @@ async def main(page: ft.Page):
         )
 
         count = 1
-        async for i, r in gen.run(selected_items):
+        async for i, r in gen.run_palette_change(selected_items):
             uni_progress_bar.value = count / i
             uni_progress_info.value = f"正在处理LUT {count}/{i}"
             uni_progress_log.controls.append(
-                ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400)
+                ft.Container(
+                    ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400), 
+                    border=ft.Border.only(
+                        top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                    )
+                )
             )
             if len(uni_progress_log.controls) > 1000:
                 uni_progress_log.controls.pop(0)
@@ -654,7 +730,12 @@ async def main(page: ft.Page):
         is_running = False
         uni_progress_info.value = f"任务已完成"
         uni_progress_log.controls.append(
-            ft.Text(f'任务已完成，请检查输出文件夹 "{os.path.join(output_dir, working_palette)}"')
+            ft.Container(
+                ft.Text(f'任务已完成，请检查输出文件夹 "{os.path.join(output_dir, working_palette)}"'), 
+                border=ft.Border.only(
+                    top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                )
+            )
         )
         uni_progress_log.update()
         uni_progress_info.update()
@@ -684,7 +765,7 @@ async def main(page: ft.Page):
             expand=True,
             controls=[
                 ft.Column(
-                    alignment=ft.MainAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.END,
                     controls=[
                         ft.Button(
                             '添加图像', ft.Icons.FILE_OPEN,
@@ -717,16 +798,20 @@ async def main(page: ft.Page):
                 main_container
             ]
         ),
-        ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
-            controls=[
-                ft.Button(
-                    "选择dji_irp路径", 
-                    on_click=on_dji_irp_pick,
-                    width=180
-                ),
-                dji_irp_textfield,
-            ]
+        ft.Container(
+            ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[
+                    ft.Button(
+                        "选择dji_irp路径", 
+                        on_click=on_dji_irp_pick,
+                        width=180
+                    ),
+                    dji_irp_textfield,
+                ],
+                margin=ft.Margin.only(top=10),
+            ),
+            border=ft.Border.only(top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT))
         )
     )
     if platform.system() == 'Windows' and weasyprint_method != 'lib':

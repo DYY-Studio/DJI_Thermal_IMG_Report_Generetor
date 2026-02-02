@@ -11,3 +11,6 @@
 
 dji_timgrg_config.json
 dji_timgrg_config2.json
+
+/build
+.python-version

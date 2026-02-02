@@ -4,3 +4,4 @@ pymupdf
 pillow >= 11.0.0
 xmltodict
 flet[all] == 0.80.5
+aiofiles
