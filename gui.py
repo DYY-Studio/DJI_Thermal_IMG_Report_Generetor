@@ -37,6 +37,21 @@ font_preset = {
 }
 is_running = False
 
+def SettingRow(title: str, subtitle: str, control: ft.Control, visible: bool = True):
+    return ft.Container(
+        content=ft.Row([
+            ft.Column([
+                ft.Text(title, size=16, weight=ft.FontWeight.W_500),
+                ft.Text(subtitle, size=12, color=ft.Colors.OUTLINE),
+            ], expand=True, spacing=2),
+            # 这里放置控制组件（Switch 或 SpinBox）
+            ft.Container(content=control, alignment=ft.Alignment.CENTER_RIGHT)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+        padding=ft.Padding.symmetric(vertical=10, horizontal=15),
+        border=ft.Border.only(bottom=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
+        visible=visible
+    )
+
 async def main(page: ft.Page):
     page.title = "DJI Thermal Image Report Generator"
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
@@ -144,7 +159,7 @@ async def main(page: ft.Page):
         ],
         text_size=13,
         height=44,
-        width=180,
+        width=140,
         editable=False,
         on_select=lambda _: on_settings_value_change(palette_dropdown.value, 'palette')
     )
@@ -177,63 +192,67 @@ async def main(page: ft.Page):
     )
 
     img_settings = {
-        'jpeg_quality': ft.Row(
-            [
-                ft.Text('JPEG Quality', width=120),
-                SpinBox(
-                    value=settings['jpeg_quality'],
-                    min_val=0,
-                    max_val=100,
-                    precision=0,
-                    step=1,
-                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'jpeg_quality')
-                ),
-            ],
+        'jpeg_quality': SettingRow(
+            'JPEG Quality',
+            'Higher Better and Bigger. Effective when lower than 96',
+            SpinBox(
+                value=settings['jpeg_quality'],
+                min_val=0,
+                max_val=100,
+                precision=0,
+                step=1,
+                on_change=lambda v: on_settings_value_change(int(float(v.data)), 'jpeg_quality')
+            ),
             visible=imgformat_dropdown.value == 'jpeg'
         ),
-        'jpeg_subsampling': ft.Row(
-            [
-                ft.Text('JPEG Subsample', width=120),
-                subsampling_dropdown
-            ],
+        'jpeg_subsampling': SettingRow(
+            'JPEG Subsample',
+            'Reduce size but lose a little quality',
+            subsampling_dropdown,
             visible=imgformat_dropdown.value == 'jpeg'
         ),
-        'png_compress': ft.Row(
-            [
-                ft.Text('PNG Compress', width=120),
-                SpinBox(
-                    value=settings['png_compress'],
-                    min_val=0,
-                    max_val=9,
-                    precision=0,
-                    step=1,
-                    on_change=lambda v: on_settings_value_change(int(float(v.data)), 'png_compress')
-                ),
-            ],
+        'png_compress': SettingRow(
+            'PNG Compress',
+            'Higher Smaller Slower',
+            SpinBox(
+                value=settings['png_compress'],
+                min_val=0,
+                max_val=9,
+                precision=0,
+                step=1,
+                on_change=lambda v: on_settings_value_change(int(float(v.data)), 'png_compress')
+            ),
             visible=imgformat_dropdown.value == 'png'
         )
     }
 
-    settings_view = ft.Column(
+    settings_view = ft.ListView(
         controls=[
-            ft.Row([
-                ft.Checkbox(
-                    'Distance (m)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'distance'),
-                    value=preset_overwrite['distance']
-                ),
-                SpinBox(
-                    value=settings['distance'],
-                    min_val=1.0,
-                    max_val=25.0,
-                    precision=1,
-                    step=0.1,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'distance')
-                )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Humidity (%)', width=120,
+            SettingRow(
+                'Distance (m)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Distance (m)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'distance'),
+                        value=preset_overwrite['distance']
+                    ),
+                    SpinBox(
+                        value=settings['distance'],
+                        min_val=1.0,
+                        max_val=25.0,
+                        precision=1,
+                        step=0.1,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'distance')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Humidity (%)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                ft.Switch(
+                    # 'Humidity (%)', width=120,
                     on_change=lambda e: on_preset_overwrite_value_change(e.data, 'humidity'),
                     value=preset_overwrite['humidity']
                 ),
@@ -245,54 +264,68 @@ async def main(page: ft.Page):
                     step=0.1,
                     on_change=lambda v: on_settings_value_change(float(v.data), 'humidity')
                 )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Emissivity (ε)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'emissivity'),
-                    value=preset_overwrite['emissivity']
-                ),
-                SpinBox(
-                    value=settings['emissivity'],
-                    min_val=0.10,
-                    max_val=1.00,
-                    precision=2,
-                    step=0.01,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'emissivity')
-                )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Ambient (℃)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'ambient'),
-                    value=preset_overwrite['ambient']
-                ),
-                SpinBox(
-                    value=settings['ambient'],
-                    min_val=-40.0,
-                    max_val=80.00,
-                    precision=1,
-                    step=0.1,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'ambient')
-                )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Reflection (℃)', width=120,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'reflection'),
-                    value=preset_overwrite['reflection']
-                ),
-                SpinBox(
-                    value=settings['reflection'],
-                    min_val=-40.0,
-                    max_val=500.0,
-                    precision=1,
-                    step=0.1,
-                    on_change=lambda v: on_settings_value_change(float(v.data), 'reflection')
-                )
-            ]),
-            ft.Row([
-                ft.Text('Brightness', width=120),
+            ])
+            ),
+            SettingRow(
+                'Emissivity (ε)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Emissivity (ε)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'emissivity'),
+                        value=preset_overwrite['emissivity']
+                    ),
+                    SpinBox(
+                        value=settings['emissivity'],
+                        min_val=0.10,
+                        max_val=1.00,
+                        precision=2,
+                        step=0.01,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'emissivity')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Ambient (℃)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Ambient (℃)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'ambient'),
+                        value=preset_overwrite['ambient']
+                    ),
+                    SpinBox(
+                        value=settings['ambient'],
+                        min_val=-40.0,
+                        max_val=80.00,
+                        precision=1,
+                        step=0.1,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'ambient')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Reflection (℃)',
+                'Overwrite internal value / default value',
+                ft.Row([
+                    ft.Switch(
+                        # 'Reflection (℃)', width=120,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'reflection'),
+                        value=preset_overwrite['reflection']
+                    ),
+                    SpinBox(
+                        value=settings['reflection'],
+                        min_val=-40.0,
+                        max_val=500.0,
+                        precision=1,
+                        step=0.1,
+                        on_change=lambda v: on_settings_value_change(float(v.data), 'reflection')
+                    )
+                ])
+            ),
+            SettingRow(
+                'Brightness',
+                'Brightness of output image',
                 SpinBox(
                     value=settings['brightness'],
                     min_val=0,
@@ -301,9 +334,10 @@ async def main(page: ft.Page):
                     step=1,
                     on_change=lambda v: on_settings_value_change(int(float(v.data)), 'brigetness')
                 )
-            ]),
-            ft.Row([
-                ft.Text('Max Workers', width=120),
+            ),
+            SettingRow(
+                'Max Workers',
+                'Concurrent tasks to generate result faster',
                 SpinBox(
                     value=settings['max_workers'],
                     min_val=1,
@@ -312,17 +346,22 @@ async def main(page: ft.Page):
                     step=1,
                     on_change=lambda v: on_settings_value_change(int(float(v.data)), 'max_workers')
                 )
-            ]),
-            ft.Row([
-                ft.Checkbox(
-                    'Palette', width=80,
-                    on_change=lambda e: on_preset_overwrite_value_change(e.data, 'palette'),
-                    value=preset_overwrite['palette']
-                ),
-                palette_dropdown
-            ]),
-            ft.Row([
-                ft.Text('Colorbar Width', width=120),
+            ),
+            SettingRow(
+                'Palette',
+                'Palette for output image',
+                ft.Row([
+                    ft.Switch(
+                        # 'Palette', width=80,
+                        on_change=lambda e: on_preset_overwrite_value_change(e.data, 'palette'),
+                        value=preset_overwrite['palette']
+                    ),
+                    palette_dropdown
+                ])
+            ),
+            SettingRow(
+                'Colorbar Width',
+                'Set width of temperature-color bar',
                 SpinBox(
                     value=settings['colorbar_width'],
                     min_val=5,
@@ -331,24 +370,25 @@ async def main(page: ft.Page):
                     step=1,
                     on_change=lambda v: on_settings_value_change(int(float(v.data)), 'colorbar_width')
                 )
-            ]),
-            ft.Row([
-                ft.Text('Colorbar Border', width=120),
-                ft.Checkbox(
-                    ft.Text('Enable'), 
+            ),
+            SettingRow(
+                'Colorbar Border',
+                'Whether temperature-color bar has border',
+                ft.Switch(
                     value=settings['colorbar_border'], 
                     on_change=lambda e: on_settings_value_change(e.data, 'colorbar_border')
                 )
-            ]),
-            ft.Row([
-                ft.Text('Image Format', width=120),
+            ),
+            SettingRow(
+                'Image Format',
+                'PNG for Lossles, JPEG for SMALL SIZE',
                 imgformat_dropdown
-            ]),
+            ),
             img_settings['jpeg_quality'],
             img_settings['jpeg_subsampling'],
             img_settings['png_compress']
         ],
-        wrap=True
+        # wrap=True
     )
 
     uni_progress_bar = ft.ProgressBar(1.0)
