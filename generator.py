@@ -346,7 +346,7 @@ class ThermalReportGenerator:
 
         with io.BytesIO() as stream:
             await asyncio.to_thread(img.save, stream, self.img_format, **params)
-            if app_segments and self.img_format == 'jpeg':
+            if app_segments and self.img_format == 'jpeg' and self.jpeg_keepdata:
                 new_pos: dict[int, tuple[int, int]] = self.get_jpeg_app_segments(stream, pos_only=True)['pos']
                 app_end_pos = new_pos.get(0xE1, new_pos.get(0xE0, (0, stream.tell())))[1]
                 stream.seek(0)
