@@ -1,4 +1,6 @@
-import os, re, datetime, exifread, shutil, uuid, asyncio, pathlib, json, traceback, locale, xmltodict, fitz # PyMuPDF
+import os, re, datetime, exifread, io, struct, aiofiles
+import shutil, uuid, asyncio, pathlib
+import json, traceback, locale, xmltodict, fitz # PyMuPDF
 from PIL import Image
 from jinja2 import Template
 from enum import Enum
@@ -64,6 +66,7 @@ class ThermalReportGenerator:
             png_compress: int = 6,
             jpeg_quality: int = 95,
             jpeg_subsampling: Literal['4:4:4', '4:2:2', '4:2:0'] = '4:4:4',
+            jpeg_keepdata: bool = False,
             max_workers: int = 4
         ):
         pathlib.Path(output_dir).mkdir(exist_ok=True)
@@ -90,22 +93,65 @@ class ThermalReportGenerator:
         self.png_compress = png_compress
         self.jpeg_quality = jpeg_quality
         self.jpeg_subsampling = jpeg_subsampling
+        self.jpeg_keepdata = jpeg_keepdata
 
         self.semaphore = asyncio.Semaphore(max_workers)
         self.executor = ProcessPoolExecutor(max_workers=max_workers)
 
+    @staticmethod
+    def get_jpeg_app_segments(stream: io.BufferedIOBase, pos_only: bool = False):
+        stream.seek(0)
+        segments: dict[int | str, list[bytes]] = {'pos': dict()}
+        
+        # 验证 SOI (0xFFD8)
+        if stream.read(2) != b'\xff\xd8':
+            raise ValueError("不是有效的 JPEG 文件")
+
+        while True:
+            # 读取 4 个字节: [Marker (2字节)] + [Length (2字节)]
+            header = stream.read(4)
+            if len(header) < 4:
+                break
+                
+            marker = header[0:2]
+
+            # SOS (0xFFDA)，元数据结束
+            if marker == b'\xff\xda':
+                stream.seek(-4, 1)
+                break
+
+            # 解包大端序长度
+            length = struct.unpack(">H", header[2:4])[0]
+            
+            # JPEG 段长度包含长度字段自身的 2 字节
+            content = stream.read(length - 2)
+            
+            # 如果是 APPn 段 (0xFFE0 - 0xFFEF)
+            if 0xE0 <= marker[1] <= 0xEF:
+                if not pos_only:
+                    if marker[1] not in segments:
+                        segments[marker[1]] = []
+                    # 存储完整的段（包含 Marker 和 Length）
+                    segments[marker[1]].append(marker + header[2:4] + content)
+                segments['pos'][marker[1]] = (stream.tell() - length - 2, stream.tell())
+                
+        return segments
+
     def get_metadata(self, img_path: str | pathlib.Path):
         """从 APP1 Marker 提取元数据"""
         xmp = ''
+        exif = b''
+        app_segments: dict[str, list[bytes]] = None
         with open(img_path, mode='rb') as f:
             tags = exifread.process_file(f, builtin_types = True)
             f.seek(0)
             with Image.open(f) as img:
-                xmp = img.info.get('xmp', '')
-                if xmp:
+                exif = img.info.get('exif', b'')
+                if (xmp := img.info.get('xmp', '')):
                     tags.update(xmltodict.parse(xmp)['x:xmpmeta']['rdf:RDF']['rdf:Description'])
                 else:
                     return None
+            app_segments = self.get_jpeg_app_segments(f)
 
         if not tags.get("@drone-dji:ImageSource", "") == "InfraredCamera":
             return None
@@ -130,13 +176,44 @@ class ThermalReportGenerator:
             "palette": camel_to_snake(get_tag('EXIF ImageDescription')),
             "raw_gps": gps,
             "raw_xmp": xmp,
+            "raw_exif": exif,
+            "raw_segments": app_segments
         }
+    
+    async def get_default_settings(self, img_path: str | pathlib.Path) -> Optional[dict[str, float]]:
+        default_vals: Optional[dict[str, float]] = None
+
+        # 如果有任何选项没有定义，则空跑一轮获取默认值
+        if not all((self.distance, self.humidity, self.emissivity, self.ambient, self.reflection)):
+            default_vals = dict()
+            cmd = [
+                "-a", "measure", "-s", str(img_path), "-o", "NUL" if os.name == 'nt' else "/dev/null", 
+            ]+ \
+            (["--distance", "1.0",] if not self.distance else []) + \
+            (["--humidity", "20.0",] if not self.humidity else []) + \
+            (["--emissivity", "0.10",] if not self.emissivity else []) + \
+            (["--ambient", "0.0",] if not self.ambient else []) + \
+            (["--reflection", "0.0",] if not self.reflection else [])
+            proc = await asyncio.create_subprocess_exec(
+                self.cli_path, *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            result = stdout.decode(locale.getencoding())
+            for line in result.split('\n'):
+                if (matched := re.match(r'Change (\w+) from ([+-]?(?:\d+\.?\d*|\.\d+)) to [+-]?(?:\d+\.?\d*|\.\d+)', line)):
+                    param, default_val = matched.groups()
+                    default_vals[param.split('_')[0]] = float(default_val)
+
+        return default_vals
 
     async def measure_thermal_async(self, 
             img_path: str | pathlib.Path, 
             task_id: str, 
             gps: tuple[float, float, float],
             xmp: str,
+            exif: bytes,
         ):
         raw_out = pathlib.Path(self.temp_dir) / f"{task_id}.raw"
         
@@ -161,8 +238,8 @@ class ThermalReportGenerator:
                 h = int(line.split(':')[-1].strip())
         
         import numpy as np
-        with open(raw_out, mode='rb') as f:
-            temp_data = np.fromfile(f, dtype=np.float32).reshape((h, w))
+        async with aiofiles.open(raw_out, mode='rb') as f:
+            temp_data = np.frombuffer(await f.read(), dtype=np.float32).reshape((h, w))
 
         # gps: (lat, lon, alt)
         pixel_scale = (1.0, 1.0, 0.0) 
@@ -187,9 +264,10 @@ class ThermalReportGenerator:
         final_img_path = pathlib.Path(self.temp_dir) / f"{task_id}.tif"
 
         import tifffile
+        cache_bytesIO = io.BytesIO()
         await asyncio.to_thread(
             tifffile.imwrite,
-            final_img_path,
+            cache_bytesIO,
             temp_data,
             photometric=tifffile.PHOTOMETRIC.MINISBLACK,
             # description=xmp,
@@ -197,11 +275,21 @@ class ThermalReportGenerator:
             extratags=extra_tags,
         )
 
+        cache_bytesIO_2 = io.BytesIO()
+        cache_bytesIO.seek(0)
+        with Image.open(cache_bytesIO) as img:
+            img.save(cache_bytesIO_2, format='tiff', xmp=xmp, exif=exif)
+        del cache_bytesIO
+
+        async with aiofiles.open(final_img_path, mode='wb') as f:
+            await f.write(cache_bytesIO_2.getbuffer())
+        del cache_bytesIO_2
+
         raw_out.unlink(missing_ok=True)
 
         return final_img_path if final_img_path.exists() else None
 
-    async def process_thermal_async(self, img_path: str | pathlib.Path, task_id: str):
+    async def process_thermal_async(self, img_path: str | pathlib.Path, task_id: str, app_segments: Optional[dict[int, list[str]]] = None):
         """调用 DJI SDK CLI 处理图像"""
         raw_out = pathlib.Path(self.temp_dir) / f"{task_id}.raw"
         
@@ -238,8 +326,8 @@ class ThermalReportGenerator:
                 h = int(line.split(':')[-1].strip())
 
         # 将 Raw RGB 转换指定格式
-        with open(raw_out, "rb") as f:
-            img = Image.frombytes("RGB", (w, h), f.read())
+        async with aiofiles.open(raw_out, "rb") as f:
+            img = Image.frombytes("RGB", (w, h), await f.read())
         
         final_img_path = pathlib.Path(self.temp_dir) / f"{task_id}.{self.img_format}"
 
@@ -249,8 +337,29 @@ class ThermalReportGenerator:
                 'quality': self.jpeg_quality,
                 'subsampling': self.jpeg_subsampling
             }
+        if self.img_format == 'jpeg' and app_segments and 0xE1 in app_segments:
+            for seg in app_segments[0xE1]:
+                if seg[4:].startswith(b'Exif'):
+                    params['exif'] = seg[4:]
+                elif seg[4:].startswith(b'http://ns.adobe.com/xap/1.0/'):
+                    params['xmp'] = seg[4:]
 
-        await asyncio.to_thread(img.save, final_img_path, self.img_format, **params)
+        with io.BytesIO() as stream:
+            await asyncio.to_thread(img.save, stream, self.img_format, **params)
+            if app_segments and self.img_format == 'jpeg':
+                new_pos: dict[int, tuple[int, int]] = self.get_jpeg_app_segments(stream, pos_only=True)['pos']
+                app_end_pos = new_pos.get(0xE1, new_pos.get(0xE0, (0, stream.tell())))[1]
+                stream.seek(0)
+                async with aiofiles.open(final_img_path, mode='wb') as f:
+                    await f.write(stream.read(app_end_pos))
+                    for marker, segs in app_segments.items():
+                        if marker != 'pos' and (marker & 0xF) > 1:
+                            for seg in segs:
+                                await f.write(seg)
+                    await f.write(stream.read())
+            else:
+                async with aiofiles.open(final_img_path, mode='wb') as f:
+                    await f.write(stream.getvalue())
 
         raw_out.unlink(missing_ok=True)
         
@@ -296,18 +405,24 @@ class ThermalReportGenerator:
                     return None, None, img_name, "No InfraredCamera Image / Cannot find DJI XMP"
                 
                 if work == 'geotiff':
-                    tiff_path = await self.measure_thermal_async(full_path, task_id, meta['raw_gps'], meta['raw_xmp'])
+                    tiff_path = await self.measure_thermal_async(full_path, task_id, meta['raw_gps'], meta['raw_xmp'], meta['raw_exif'])
                     return None, tiff_path, img_name, None
             
                 # SDK 处理
-                png_path, t_min, t_max, w, h = await self.process_thermal_async(full_path, task_id)
+                png_path, t_min, t_max, w, h = await self.process_thermal_async(
+                    full_path,
+                    task_id, 
+                    meta['raw_segments'] if work == 'palette' else None
+                )
 
                 if work == 'palette':
                     return None, png_path, img_name, None
                 
-                for key in ('raw_gps', 'raw_xmp', ):
+                for key in [k for k in meta if k.startswith('raw_')]:
                     if key in meta: meta.pop(key)
                 
+                default_vals = await self.get_default_settings(full_path) or dict()
+
                 # 渲染 HTML
                 html_out = self.template.render(
                     filename=pathlib.Path(img_name).name,
@@ -322,11 +437,11 @@ class ThermalReportGenerator:
                         )
                     ),
                     width=w, height=h,
-                    distance=f"{self.distance}", 
-                    humidity=f"{self.humidity}", 
-                    emissivity=f"{self.emissivity}", 
-                    reflection=f"{self.reflection}",
-                    ambient=f"{self.ambient}",
+                    distance=f"{self.distance if self.distance else default_vals.get('distance', 0.0)}", 
+                    humidity=f"{self.humidity if self.humidity else default_vals.get('humidity', 0.0)}", 
+                    emissivity=f"{self.emissivity if self.emissivity else default_vals.get('emissivity', 0.0)}", 
+                    reflection=f"{self.reflection if self.reflection else default_vals.get('reflection', 0.0)}",
+                    ambient=f"{self.ambient if self.ambient else default_vals.get('ambient', 0.0)}",
                     colorbar_width = self.colorbar_width,
                     colorbar_border = self.border,
                     **meta
@@ -341,7 +456,7 @@ class ThermalReportGenerator:
 
     async def run_geotiff(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
         if not image_abs_paths:
-            images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
+            images = [(pathlib.Path(self.input_dir) / f).absolute() for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
         else:
             images = []
             for f in image_abs_paths:
@@ -353,18 +468,18 @@ class ThermalReportGenerator:
             print("未发现待处理图片")
             return
         
-        self.output_dir = pathlib.Path(self.output_dir) / self.palette.name
+        self.output_dir = pathlib.Path(self.output_dir)
         self.output_dir.mkdir(exist_ok=True)
         
         tasks = [asyncio.create_task(self.process_single_file(img, work='geotiff')) for img in images]
         for task in asyncio.as_completed(tasks):
             result = await task
             if result[0] is None and result[1] is not None:
-                output_path = pathlib.Path(self.output_dir) / result[2]
-                filename_out_ext = result[2].removesuffix(output_path.suffix)
+                output_path = pathlib.Path(self.output_dir) / pathlib.Path(result[2]).with_suffix(f".{self.img_format}").name
+                filename_out_ext = output_path.with_suffix('').name
                 i = 1
                 while output_path.exists():
-                    output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
+                    output_path = output_path.with_name(f'{filename_out_ext}_{i}.{self.img_format}')
                     i += 1
                 try:
                     shutil.move(result[1], output_path)
@@ -373,7 +488,7 @@ class ThermalReportGenerator:
                     yield len(images), {'success': False, 'message': f"失败: {result[2]} ({e})"}
                     continue
                 while output_path.exists():
-                    output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
+                    output_path = output_path.with_name(f'{filename_out_ext}_{i}.tif')
                     i += 1
                 yield len(images), {'success': True, 'message': f"完成: {output_path}"}
             else:
@@ -381,9 +496,11 @@ class ThermalReportGenerator:
 
         self.executor.shutdown()
 
-    async def run_palette_change(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
+    async def run_palette_change(self, 
+        image_abs_paths: Optional[list[str | pathlib.Path]] = None
+    ) -> AsyncGenerator[tuple[int, dict], None]:
         if not image_abs_paths:
-            images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
+            images = [(pathlib.Path(self.input_dir) / f).absolute() for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
         else:
             images = []
             for f in image_abs_paths:
@@ -402,11 +519,11 @@ class ThermalReportGenerator:
         for task in asyncio.as_completed(tasks):
             result = await task
             if result[0] is None and result[1] is not None:
-                output_path = pathlib.Path(self.output_dir) / result[2]
-                filename_out_ext = result[2].removesuffix(output_path.suffix)
+                output_path = pathlib.Path(self.output_dir) / pathlib.Path(result[2]).with_suffix(f".{self.img_format}").name
+                filename_out_ext = output_path.with_suffix('').name
                 i = 1
                 while output_path.exists():
-                    output_path = output_path.with_name(f'{filename_out_ext}_{i}{output_path.suffix}')
+                    output_path = output_path.with_name(f'{filename_out_ext}_{i}.{self.img_format}')
                     i += 1
                 try:
                     shutil.move(result[1], output_path)
@@ -422,7 +539,7 @@ class ThermalReportGenerator:
     
     async def run(self, image_abs_paths: Optional[list[str | pathlib.Path]] = None) -> AsyncGenerator[tuple[int, dict], None]:
         if not image_abs_paths:
-            images = [f for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
+            images = [(pathlib.Path(self.input_dir) / f).absolute() for f in os.listdir(str(self.input_dir)) if f.lower().endswith(('.jpg', '.jpeg'))]
         else:
             images = []
             for f in image_abs_paths:
@@ -479,9 +596,10 @@ if __name__ == "__main__":
         output_dir="./reports",
         temp_dir="./temps",
         cli_path=r"D:\Test\dji_thermal_sdk_v1.8_20250829\utility\bin\windows\release_x64\dji_irp.exe",
-        palette=ThermalPalette.iron_red
+        palette=ThermalPalette.iron_red,
+        # img_format='jpeg'
     )
     async def _internal():
-        async for i in gen.run_geotiff():
+        async for i in gen.run():
             pass
     asyncio.run(_internal())

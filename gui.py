@@ -638,7 +638,7 @@ async def main(page: ft.Page):
         )
 
         count = 1
-        async for i, r in gen.run(selected_items):
+        async for i, r in gen.run_palette_change(selected_items):
             uni_progress_bar.value = count / i
             uni_progress_info.value = f"正在处理LUT {count}/{i}"
             uni_progress_log.controls.append(
