@@ -14,4 +14,5 @@ dependencies = [
     "aiofiles",
     "typer",
     "certifi >= 2025.6.15",
+    "weasyprint",
 ]

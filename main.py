@@ -58,6 +58,7 @@ async def main(page: ft.Page):
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
     page.theme = ft.Theme(font_family=font_preset.get(platform.system(), "sans-serif"))
     page.window.prevent_close = True
+    file_picker = ft.FilePicker()
 
     weasyprint_method, which_weasyprint = await check_weasyprint()
 
@@ -500,7 +501,7 @@ async def main(page: ft.Page):
             image_grid_container.update()
 
     async def on_executable_pick():
-        file = await ft.FilePicker().pick_files(
+        file = await file_picker.pick_files(
             dialog_title="选择可执行文件",
             allow_multiple=False,
             file_type=ft.FilePickerFileType.CUSTOM,
@@ -526,7 +527,7 @@ async def main(page: ft.Page):
             weasyprint_textfield.update()
 
     async def on_files_pick(e):
-        files = await ft.FilePicker().pick_files(
+        files = await file_picker.pick_files(
             dialog_title='选择DJI R-JPEG文件',
             allow_multiple=True, 
             file_type=ft.FilePickerFileType.CUSTOM, 
@@ -617,7 +618,7 @@ async def main(page: ft.Page):
 
         weasyprint_method = check_result[0]
         
-        output_dir = await ft.FilePicker().get_directory_path("选择输出文件夹")
+        output_dir = await file_picker.get_directory_path("选择输出文件夹")
         if not output_dir:
             return
         
@@ -688,7 +689,7 @@ async def main(page: ft.Page):
             page.show_dialog(no_dji_irp_alert)
             return
         
-        output_dir = await ft.FilePicker().get_directory_path("选择输出文件夹")
+        output_dir = await file_picker.get_directory_path("选择输出文件夹")
         if not output_dir:
             return
         
