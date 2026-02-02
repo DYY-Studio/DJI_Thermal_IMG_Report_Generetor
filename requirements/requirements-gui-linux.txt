@@ -5,3 +5,4 @@ pillow >= 11.0.0
 xmltodict
 weasyprint
 flet[all] == 0.80.5
+aiofiles

@@ -1,0 +1,17 @@
+[project]
+name = "dji-thermal-img-report-generetor"
+version = "0.1.0"
+description = "A tool to generate report of DJI Thermal Images (R-JPEG)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "exifread",
+    "jinja2",
+    "pymupdf",
+    "pillow >= 11.0.0",
+    "xmltodict",
+    "flet[all] == 0.80.5",
+    "aiofiles",
+    "typer",
+    "certifi >= 2025.6.15",
+]

@@ -20,7 +20,8 @@ settings: dict[str, int | float | str | None] = {
     'img_format': 'png',
     'png_compress': 6,
     'jpeg_quality': 95,
-    'jpeg_subsampling': '4:4:4'
+    'jpeg_subsampling': '4:4:4',
+    'jpeg_keepdata': False
 }
 preset_overwrite: dict[str, bool] = {
     'distance': False,
@@ -206,9 +207,18 @@ async def main(page: ft.Page):
             visible=imgformat_dropdown.value == 'jpeg'
         ),
         'jpeg_subsampling': SettingRow(
-            'JPEG Subsample',
+            'JPEG Subsampling',
             'Reduce size but lose a little quality',
             subsampling_dropdown,
+            visible=imgformat_dropdown.value == 'jpeg'
+        ),
+        'jpeg_keepdata': SettingRow(
+            'JPEG Keep Data',
+            'Keep raw DJI thermal data (~640KB) in JPEG Header.',
+            ft.Switch(
+                on_change=lambda e: on_settings_value_change(e.data, 'jpeg_keepdata'),
+                value=settings['jpeg_keepdata']
+            ),
             visible=imgformat_dropdown.value == 'jpeg'
         ),
         'png_compress': SettingRow(
@@ -386,6 +396,7 @@ async def main(page: ft.Page):
             ),
             img_settings['jpeg_quality'],
             img_settings['jpeg_subsampling'],
+            img_settings['jpeg_keepdata'],
             img_settings['png_compress']
         ],
         # wrap=True
@@ -393,7 +404,15 @@ async def main(page: ft.Page):
 
     uni_progress_bar = ft.ProgressBar(1.0)
     uni_progress_info = ft.Text("等待任务开始", text_align=ft.TextAlign.CENTER)
-    uni_progress_log = ft.ListView(controls=[ft.Text("系统启动")], expand=True, auto_scroll=True, margin=10, divider_thickness = 5)
+    uni_progress_log = ft.ListView(
+        controls=[ft.Container(ft.Text("系统启动"), border=ft.Border.only(
+            top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+        ))], 
+        expand=True, 
+        auto_scroll=True, 
+        margin=10, 
+        divider_thickness = 5
+    )
 
     tab_view = ft.Tabs(
         selected_index=0,
@@ -436,7 +455,7 @@ async def main(page: ft.Page):
                                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                         margin=10
                                     ),
-                                    border=ft.Border.all(3, color=ft.Colors.BLUE),
+                                    border=ft.Border.all(side=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT)),
                                     expand=True,
                                     border_radius=10
                                 )
@@ -453,19 +472,20 @@ async def main(page: ft.Page):
 
     main_container = ft.Container(
         tab_view,
-        expand=True
+        expand=True,
+        border=ft.Border.only(left=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT))
     )
 
-    async def on_select_all(e: ft.ControlEventHandler[ft.Checkbox]):
+    async def on_select_all(e: ft.ControlEventHandler[ft.Switch]):
         for item in image_grid.controls:
             item: GalleryItem
             if item.is_selected != select_all_checkbox.value:
                 item.toggle_selection(e)
 
-    select_all_checkbox = ft.Checkbox(
-        "全选", 
+    select_all_checkbox = ft.Switch(
+        label="选择全部图像", 
         on_change=on_select_all,
-        expand=True
+        expand=True,
     )
 
     async def on_files_remove(e: ft.ControlEventHandler[ft.Button]):
@@ -625,7 +645,12 @@ async def main(page: ft.Page):
             uni_progress_bar.value = count / i
             uni_progress_info.value = f"正在处理报告 {count}/{i}"
             uni_progress_log.controls.append(
-                ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400)
+                ft.Container(
+                    ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400), 
+                    border=ft.Border.only(
+                        top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                    )
+                )
             )
             if len(uni_progress_log.controls) > 1000:
                 uni_progress_log.controls.pop(0)
@@ -637,7 +662,12 @@ async def main(page: ft.Page):
         is_running = False
         uni_progress_info.value = f"任务已完成"
         uni_progress_log.controls.append(
-            ft.Text(f'任务已完成，请检查输出文件夹 "{output_dir}"')
+            ft.Container(
+                ft.Text(f'任务已完成，请检查输出文件夹 "{output_dir}"'), 
+                border=ft.Border.only(
+                    top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                )
+            )
         )
         uni_progress_log.update()
         uni_progress_info.update()
@@ -682,7 +712,12 @@ async def main(page: ft.Page):
             uni_progress_bar.value = count / i
             uni_progress_info.value = f"正在处理LUT {count}/{i}"
             uni_progress_log.controls.append(
-                ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400)
+                ft.Container(
+                    ft.Text(r['message'], color=ft.Colors.GREEN_400 if r['success'] else ft.Colors.RED_400), 
+                    border=ft.Border.only(
+                        top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                    )
+                )
             )
             if len(uni_progress_log.controls) > 1000:
                 uni_progress_log.controls.pop(0)
@@ -694,7 +729,12 @@ async def main(page: ft.Page):
         is_running = False
         uni_progress_info.value = f"任务已完成"
         uni_progress_log.controls.append(
-            ft.Text(f'任务已完成，请检查输出文件夹 "{os.path.join(output_dir, working_palette)}"')
+            ft.Container(
+                ft.Text(f'任务已完成，请检查输出文件夹 "{os.path.join(output_dir, working_palette)}"'), 
+                border=ft.Border.only(
+                    top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT),
+                )
+            )
         )
         uni_progress_log.update()
         uni_progress_info.update()
@@ -724,7 +764,7 @@ async def main(page: ft.Page):
             expand=True,
             controls=[
                 ft.Column(
-                    alignment=ft.MainAxisAlignment.CENTER,
+                    alignment=ft.MainAxisAlignment.END,
                     controls=[
                         ft.Button(
                             '添加图像', ft.Icons.FILE_OPEN,
@@ -757,16 +797,20 @@ async def main(page: ft.Page):
                 main_container
             ]
         ),
-        ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
-            controls=[
-                ft.Button(
-                    "选择dji_irp路径", 
-                    on_click=on_dji_irp_pick,
-                    width=180
-                ),
-                dji_irp_textfield,
-            ]
+        ft.Container(
+            ft.Row(
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[
+                    ft.Button(
+                        "选择dji_irp路径", 
+                        on_click=on_dji_irp_pick,
+                        width=180
+                    ),
+                    dji_irp_textfield,
+                ],
+                margin=ft.Margin.only(top=10),
+            ),
+            border=ft.Border.only(top=ft.BorderSide(0.5, ft.Colors.OUTLINE_VARIANT))
         )
     )
     if platform.system() == 'Windows' and weasyprint_method != 'lib':
