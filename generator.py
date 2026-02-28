@@ -1,14 +1,15 @@
 import os, re, datetime, exifread, io, struct, aiofiles
-import shutil, uuid, asyncio, pathlib
+import shutil, uuid, asyncio, pathlib, subprocess
 import json, traceback, locale, xmltodict, fitz # PyMuPDF
 from PIL import Image
 from jinja2 import Template
 from enum import Enum
 from concurrent.futures import ProcessPoolExecutor
 from typing import AsyncGenerator, Optional, Literal
+from utils import get_executable_path
 
 # 配置路径
-LUT_DIR = pathlib.Path(__file__).parent / "luts"
+LUT_DIR = pathlib.Path(get_executable_path()).parent / "luts"
 
 class ThermalPalette(Enum):
     white_hot = 0
@@ -71,7 +72,7 @@ class ThermalReportGenerator:
         ):
         pathlib.Path(output_dir).mkdir(exist_ok=True)
         pathlib.Path(temp_dir).mkdir(exist_ok=True)
-        with open(pathlib.Path(__file__).parent / "template.html", "r", encoding="utf-8") as f:
+        with open(pathlib.Path(get_executable_path()).parent / "template.html", "r", encoding="utf-8") as f:
             self.template = Template(f.read())
 
         self.distance = distance
@@ -197,7 +198,8 @@ class ThermalReportGenerator:
             proc = await asyncio.create_subprocess_exec(
                 self.cli_path, *cmd,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             stdout, _ = await proc.communicate()
             result = stdout.decode(locale.getencoding())
@@ -223,7 +225,8 @@ class ThermalReportGenerator:
 
         proc = await asyncio.create_subprocess_exec(
             self.cli_path, *cmd,
-            stdout=asyncio.subprocess.PIPE
+            stdout=asyncio.subprocess.PIPE,
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         )
         stdout, _ = await proc.communicate()
         if not proc.returncode == 0 or not raw_out.exists():
@@ -308,7 +311,8 @@ class ThermalReportGenerator:
         proc = await asyncio.create_subprocess_exec(
             self.cli_path, *cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         )
         stdout, _ = await proc.communicate()
         result = stdout.decode(locale.getencoding())
@@ -375,7 +379,8 @@ class ThermalReportGenerator:
         else:
             proc = await asyncio.create_subprocess_exec(
                 str(self.weasy_path), "-", str(pdf_path),
-                stdin=asyncio.subprocess.PIPE
+                stdin=asyncio.subprocess.PIPE,
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             await proc.communicate(html_str.encode('utf-8'))
 

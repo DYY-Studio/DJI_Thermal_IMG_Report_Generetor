@@ -2,11 +2,11 @@ import flet as ft, pathlib, shutil, os, platform, asyncio
 from components.spin_box import SpinBox
 from components.gallery_item import GalleryItem
 from generator import ThermalReportGenerator
-from utils import check_weasyprint, check_dji_irp
+from utils import check_weasyprint, check_dji_irp, get_executable_path
 
 files_in_grid: dict[str, bool] = dict()
 settings: dict[str, int | float | str | None] = {
-    'temp_dir': str(pathlib.Path(__file__).parent / 'temps'),
+    'temp_dir': str(pathlib.Path(get_executable_path()).parent / 'temps'),
     'distance': 5.0,
     'humidity': 50.0,
     'emissivity': 0.95,
@@ -62,9 +62,9 @@ async def main(page: ft.Page):
 
     weasyprint_method, which_weasyprint = await check_weasyprint()
 
-    dji_irp_textfield = ft.TextField(shutil.which('dji_irp'), max_lines=1, expand=True, read_only=True)
+    dji_irp_textfield = ft.TextField(await check_dji_irp() or '', max_lines=1, expand=True, read_only=True)
     weasyprint_textfield = ft.TextField(
-        which_weasyprint if which_weasyprint else '',
+        which_weasyprint or '',
         max_lines=1, 
         expand=True,
         read_only=True
@@ -73,7 +73,7 @@ async def main(page: ft.Page):
     async def read_config():
         global settings, preset_overwrite
         import json
-        config_path = pathlib.Path(__file__).parent / 'dji_timgrg_config.json'
+        config_path = pathlib.Path(get_executable_path()).parent / 'dji_timgrg_config.json'
         if not config_path.exists():
             return
         try:
@@ -97,7 +97,7 @@ async def main(page: ft.Page):
         except Exception as e:
             pass
 
-        config_path2 = pathlib.Path(__file__).parent / 'dji_timgrg_config2.json'
+        config_path2 = pathlib.Path(get_executable_path()).parent / 'dji_timgrg_config2.json'
         try:
             with open(config_path2, mode='r', encoding='utf-8') as f:
                 preset_overwrite_cache: dict = json.load(f)
@@ -594,15 +594,19 @@ async def main(page: ft.Page):
         if is_running:
             page.show_dialog(is_running_alert)
             return
+        else:
+            is_running = True
         
         items: list[GalleryItem] = image_grid.controls
         selected_items = [item.img_url for item in items if item.is_selected and os.path.exists(item.img_url)]
         if not selected_items:
             page.show_dialog(no_img_select_alert)
+            is_running = False
             return
 
         if not dji_irp_textfield.value or not os.path.exists(dji_irp_textfield.value) or not await check_dji_irp(dji_irp_textfield.value):
             page.show_dialog(no_dji_irp_alert)
+            is_running = False
             return
         
         if not weasyprint_textfield.value or not os.path.exists(weasyprint_textfield.value):
@@ -614,12 +618,14 @@ async def main(page: ft.Page):
             check_result = await check_weasyprint(weasyprint_textfield.value)
         if check_result[0] == 'none':
             page.show_dialog(no_weasyprint_alert)
+            is_running = False
             return
 
         weasyprint_method = check_result[0]
         
         output_dir = await file_picker.get_directory_path("选择输出文件夹")
         if not output_dir:
+            is_running = False
             return
         
         is_running = True
@@ -678,19 +684,24 @@ async def main(page: ft.Page):
         if is_running:
             page.show_dialog(is_running_alert)
             return
+        else:
+            is_running = True
         
         items: list[GalleryItem] = image_grid.controls
         selected_items = [item.img_url for item in items if item.is_selected and os.path.exists(item.img_url)]
         if not selected_items:
             page.show_dialog(no_img_select_alert)
+            is_running = False
             return
 
         if not dji_irp_textfield.value or not os.path.exists(dji_irp_textfield.value) or not await check_dji_irp(dji_irp_textfield.value):
             page.show_dialog(no_dji_irp_alert)
+            is_running = False
             return
         
         output_dir = await file_picker.get_directory_path("选择输出文件夹")
         if not output_dir:
+            is_running = False
             return
         
         is_running = True
@@ -743,8 +754,8 @@ async def main(page: ft.Page):
     async def save_config():
         global settings, preset_overwrite
         import json
-        config_path1 = pathlib.Path(__file__).parent / 'dji_timgrg_config.json'
-        config_path2 = pathlib.Path(__file__).parent / 'dji_timgrg_config2.json'
+        config_path1 = pathlib.Path(get_executable_path()).parent / 'dji_timgrg_config.json'
+        config_path2 = pathlib.Path(get_executable_path()).parent / 'dji_timgrg_config2.json'
         all_config = settings.copy()
         all_config['cli_path'] = dji_irp_textfield.value
         all_config['weasy_path'] = weasyprint_textfield.value
