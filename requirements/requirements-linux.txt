@@ -4,6 +4,6 @@ pymupdf
 pillow >= 11.0.0
 xmltodict
 weasyprint
-flet[all] == 0.80.5
+flet[all] == 0.81.0
 typer
 aiofiles
