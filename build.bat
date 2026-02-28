@@ -1,0 +1,1 @@
+flet build windows --exclude dji_timgrg_config.json --exclude dji_timgrg_config2.json --exclude requirements --exclude temps --exclude reports --exclude palette_changed --exclude input_images --exclude dist --exclude build --exclude .vscode --exclude .venv --exclude __pycache__ --exclude cli.py --compile-app --compile-packages --company yyfll --exclude .git
